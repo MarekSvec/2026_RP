@@ -1,0 +1,52 @@
+{% extends "content/base.html" %}
+
+{% load static %}
+
+{% block head %}
+    <style>
+        body {
+            background-image: url("{% static 'images/eu.png' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            color: white;
+        }
+    </style>
+{% endblock %}
+
+{% block header %}
+    {{ era }}
+{% endblock %}
+
+{% block main %}
+    <div style="
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+        text-align: justify;
+        color: black;
+    ">
+
+    <img src="{{ era.imageEra }}" alt="{{ era }}"
+        style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
+
+    <p><strong>Éra:</strong> {{ era.contextEra }}</p>
+    <p><strong>Začátek</strong> {{ era.start }}</p>
+    <p><strong>Konec</strong> {{ era.end }}</p>
+    <p><strong>Významné bitvy:</strong></p>
+<ul>
+    {% for article in era.articles.all %}
+        <li>
+            <a href="/article/{{ article.id }}" style="color: #0077cc; text-decoration: none;">
+                {{ article.title }}
+            </a>
+        </li>
+    {% endfor %}
+    </ul>
+    <a href="/">Zpět na úvodní stránku</a>
+    </div>
+{% endblock %}

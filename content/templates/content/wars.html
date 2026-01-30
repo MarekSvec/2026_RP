@@ -1,0 +1,94 @@
+{% extends "content/base.html" %}
+{% load static %}
+
+{% block header %}
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro&display=swap');
+
+        body {
+            position: relative; 
+            background-image: url("{% static 'images/eur.png' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            color: white;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 0;
+        }
+
+        h1 {
+            position: relative;
+            font-family: 'IM Fell English', serif;
+            text-align: center;
+            z-index: 1;
+        }
+
+        /* Battle title styling */
+        .battle-link {
+            color: #ffe600;
+            font-size: 1.5em;
+            font-weight: bold;
+            text-decoration: none;
+            font-family: 'IM Fell English', serif;
+        }
+
+        .battle-link:hover {
+            color: #f700ff;
+            text-decoration: underline;
+        }
+
+        /* War name styling */
+        .war-link {
+            color: #c4ff66;
+            font-size: 1.2em;
+            font-style: italic;
+            text-decoration: none;
+            font-family: 'IM Fell English', serif;
+        }
+
+        .war-link:hover {
+            color: #55ff33;
+            text-decoration: underline;
+        }
+
+        /* Keep battle and war close together */
+        .battle-container {
+            margin-bottom: 40px;
+        }
+
+        /* Reduce space between battle and war */
+        .battle-container a + a {
+            margin-top: 5px;
+        }
+    </style>
+
+    <h1>
+        Databáze válek 19. století {{ war.name}}
+    </h1>
+{% endblock %}
+
+{% block main %}
+    <div style="text-align: center; position: relative; z-index: 1;">
+        {% for article in articles %}
+            <div class="war-container">
+                <a href="/article/{{ article.id }}" class="battle-link">
+                    {{ article.title }}
+                </a>
+                <br>
+                <a href="{{ war.name }}" class="war-link">
+                    {{ article.war }}
+                </a>
+            </div>
+        {% endfor %}
+    </div>
+{% endblock %}

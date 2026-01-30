@@ -1,0 +1,42 @@
+{% extends "content/base.html" %}
+
+{% load static %}
+
+{% block head %}
+    <style>
+        body {
+            background-image: url("{% static 'images/eu.png' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            color: white;
+        }
+    </style>
+{% endblock %}
+
+{% block header %}
+    {{ tactics }}
+{% endblock %}
+
+{% block main %}
+    <div style="
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+        text-align: justify;
+        color: black;
+    ">
+        {% for article in tactics_articles %}
+            <img src="{{ article.imageTactics }}" alt="{{ tactics_link }}" 
+                 style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
+
+            <p><strong>Taktiky:</strong> {{ article.tactics }}</p>
+            <p><strong>Válka:</strong> <a href="/context/{{ article.context.id }}/" style="color: #0077cc; text-decoration: none;">{{ article.war }}</a></p>
+            <a href="/">Zpět na úvodní stránku</a>
+        {% endfor %}
+    </div>
+{% endblock %}

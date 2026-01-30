@@ -1,0 +1,55 @@
+{% extends "content/base.html" %}
+
+{% load static %}
+
+{% block head %}
+    <style>
+        body {
+            background-image: url("{% static 'images/eu.png' %}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            color: white;
+        }
+    </style>
+{% endblock %}
+
+
+{% block header %}
+    {{ article.title }}
+{% endblock %}
+
+{% block main %}
+    <div style="
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 10px;
+        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.2);
+        text-align: justify;
+        color: black;
+    ">
+        <img src="{{ article.image }}" alt="{{ article.title }}" 
+             style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
+
+        <p><strong>Rok:</strong> {{ article.year }}</p>
+        <p><strong>Místo:</strong> {{ article.location }}</p>
+        <p><strong>Popis:</strong> {{ article.description }}</p>
+        <p><strong>Počet obětí:</strong> {{ article.casualties }}</p>
+        <p><strong>Válka:</strong> <a href="/context/{{ article.context.id }}/" style="color: #0077cc; text-decoration: none;">{{ article.war }}</a></p>
+        <p><strong>Odkaz na taktiky:</strong> <a href="/tactics/{{ article.tactics_link }}" style="color: #0077cc; text-decoration: none;">{{ article.tactics_link }}</a></p>
+        <p><strong>Období, do kterých bitva spadá:</strong></p>
+            <ul>
+                {% for era in article.eras.all %}
+                    
+                    <li><a href="/era/{{ era.id }}">{{ era.name }}</a></li>
+                    
+                {% endfor %}
+            </ul>
+            
+        
+        <a href="/">Zpět na úvodní stránku</a>
+    </div>
+{% endblock %}
