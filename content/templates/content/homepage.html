@@ -78,13 +78,4 @@
 {% endblock %}
 
 {% block main %}
-    <div style="text-align: center; position: relative; z-index: 1;">
-        {% for article in articles %}
-            <div class="battle-container">
-                <a href="/article/{{ article.id }}" class="battle-link">
-                    {{ article.title }}
-                </a>
-            </div>
-        {% endfor %}
-    </div>
 {% endblock %}

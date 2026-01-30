@@ -33,9 +33,6 @@
         {% for article in tactics_articles %}
             <img src="{{ article.imageTactics }}" alt="{{ tactics_link }}" 
                  style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
-
-            <p><strong>Taktiky:</strong> {{ article.tactics }}</p>
-            <p><strong>Válka:</strong> <a href="/context/{{ article.context.id }}/" style="color: #0077cc; text-decoration: none;">{{ article.war }}</a></p>
             <a href="/">Zpět na úvodní stránku</a>
         {% endfor %}
     </div>

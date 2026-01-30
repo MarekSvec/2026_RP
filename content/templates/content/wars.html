@@ -73,22 +73,8 @@
     </style>
 
     <h1>
-        Databáze válek 19. století {{ war.name}}
     </h1>
 {% endblock %}
 
 {% block main %}
-    <div style="text-align: center; position: relative; z-index: 1;">
-        {% for article in articles %}
-            <div class="war-container">
-                <a href="/article/{{ article.id }}" class="battle-link">
-                    {{ article.title }}
-                </a>
-                <br>
-                <a href="{{ war.name }}" class="war-link">
-                    {{ article.war }}
-                </a>
-            </div>
-        {% endfor %}
-    </div>
 {% endblock %}

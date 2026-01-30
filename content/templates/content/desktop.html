@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Desktop</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        .desktop {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="rgba(100,100,150,0.2)"/><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            overflow: hidden;
+        }
+
+        .taskbar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.8);
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .taskbar-item {
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            max-width: 150px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .taskbar-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .taskbar-item.active {
+            background: rgba(102, 126, 234, 0.8);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .button-group {
+            margin-left: auto;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.8);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(102, 126, 234, 1);
+        }
+
+        .desktop-icon {
+            position: absolute;
+            width: 80px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: grab;
+            padding: 10px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .desktop-icon:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .desktop-icon.dragging {
+            opacity: 0.7;
+            cursor: grabbing;
+        }
+
+        .desktop-icon.selected {
+            background: rgba(102, 126, 234, 0.3);
+            border: 2px solid rgba(102, 126, 234, 0.8);
+        }
+
+        .icon-image {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: white;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .icon-label {
+            font-size: 11px;
+            text-align: center;
+            width: 100%;
+            word-wrap: break-word;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+
+        .window {
+            position: fixed;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 300px;
+            min-height: 200px;
+        }
+
+        .window.minimized {
+            display: none;
+        }
+
+        .window-header {
+            background: linear-gradient(90deg, rgba(102, 126, 234, 0.8), rgba(118, 75, 162, 0.8));
+            color: white;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            user-select: none;
+        }
+
+        .window-title {
+            font-weight: 500;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .window-btn {
+            width: 24px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .window-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .window-content {
+            flex: 1;
+            overflow: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .context-menu {
+            position: fixed;
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 9999;
+            min-width: 180px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .context-menu.hidden {
+            display: none;
+        }
+
+        .context-menu-item {
+            padding: 10px 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .context-menu-item:last-child {
+            border-bottom: none;
+        }
+
+        .context-menu-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .dialog {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .dialog.active {
+            display: flex;
+        }
+
+        .dialog-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .dialog-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: rgba(102, 126, 234, 0.8);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        /* Responzivní design */
+        @media (max-width: 768px) {
+            .desktop-icon {
+                width: 60px;
+            }
+
+            .icon-image {
+                width: 40px;
+                height: 40px;
+                font-size: 20px;
+            }
+
+            .icon-label {
+                font-size: 10px;
+            }
+
+            .window {
+                min-width: 200px;
+                min-height: 150px;
+            }
+
+            .taskbar {
+                height: 50px;
+                padding: 0 10px;
+            }
+
+            .window-header {
+                padding: 8px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .desktop-icon {
+                width: 50px;
+            }
+
+            .icon-image {
+                width: 35px;
+                height: 35px;
+                font-size: 18px;
+            }
+
+            .window {
+                min-width: 90vw;
+                min-height: 60vh;
+            }
+
+            .taskbar {
+                height: 45px;
+            }
+        }
+
+        .no-files-message {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.7);
+            padding: 40px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="desktop" id="desktop">
+        <!-- Desktop ikony budou vygenerovány JavaScriptem -->
+    </div>
+
+    <div class="taskbar" id="taskbar">
+        <div class="button-group">
+            <button class="btn" onclick="createNewFile()">+ Nový soubor</button>
+            <button class="btn" onclick="createNewFolder()">+ Nová složka</button>
+            <button class="btn" onclick="logout()">Odhlásit se</button>
+        </div>
+    </div>
+
+    <!-- Kontextové menu -->
+    <div class="context-menu hidden" id="contextMenu">
+        <div class="context-menu-item" onclick="renameItem()">Přejmenovat</div>
+        <div class="context-menu-item" onclick="deleteItem()">Smazat</div>
+        <div class="context-menu-item" onclick="propertiesItem()">Vlastnosti</div>
+    </div>
+
+    <!-- Dialogy -->
+    <div class="dialog" id="renameDialog">
+        <div class="dialog-content">
+            <div class="dialog-title">Přejmenovat</div>
+            <form onsubmit="confirmRename(event)">
+                <div class="form-group">
+                    <label class="form-label">Nový název:</label>
+                    <input type="text" id="renameInput" class="form-input" autofocus>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn" onclick="closeDialog('renameDialog')">Zrušit</button>
+                    <button type="submit" class="btn">OK</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="dialog" id="newFileDialog">
+        <div class="dialog-content">
+            <div class="dialog-title">Nový soubor</div>
+            <form onsubmit="confirmNewFile(event)">
+                <div class="form-group">
+                    <label class="form-label">Název souboru:</label>
+                    <input type="text" id="newFileInput" class="form-input" autofocus>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Typ souboru:</label>
+                    <select id="fileTypeSelect" class="form-input">
+                        <option value="text">Text File</option>
+                        <option value="image">Image</option>
+                        <option value="document">Document</option>
+                        <option value="video">Video</option>
+                        <option value="audio">Audio</option>
+                    </select>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn" onclick="closeDialog('newFileDialog')">Zrušit</button>
+                    <button type="submit" class="btn">Vytvořit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="dialog" id="newFolderDialog">
+        <div class="dialog-content">
+            <div class="dialog-title">Nová složka</div>
+            <form onsubmit="confirmNewFolder(event)">
+                <div class="form-group">
+                    <label class="form-label">Název složky:</label>
+                    <input type="text" id="newFolderInput" class="form-input" autofocus>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn" onclick="closeDialog('newFolderDialog')">Zrušit</button>
+                    <button type="submit" class="btn">Vytvořit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // CSRF token pro POST požadavky
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        const csrftoken = getCookie('csrftoken');
+
+        // Globální stav
+        let selectedItem = null;
+        let draggedItem = null;
+        let offsetX = 0;
+        let offsetY = 0;
+        let windows = {};
+        let files = [];
+        let folders = [];
+
+        // Inicializace
+        document.addEventListener('DOMContentLoaded', () => {
+            loadDesktopItems();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            const desktop = document.getElementById('desktop');
+            
+            desktop.addEventListener('contextmenu', (e) => {
+                if (e.target === desktop) {
+                    e.preventDefault();
+                    showContextMenu(e.clientX, e.clientY, null);
+                }
+            });
+
+            desktop.addEventListener('click', (e) => {
+                if (e.target === desktop) {
+                    hideContextMenu();
+                    selectedItem = null;
+                    document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
+                }
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.context-menu')) {
+                    hideContextMenu();
+                }
+            });
+        }
+
+        async function loadDesktopItems() {
+            try {
+                // Načte soubory
+                const filesResponse = await fetch('/api/files/desktop_files/', {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                files = await filesResponse.json();
+
+                // Načte složky na desktopu
+                const foldersResponse = await fetch('/api/folders/root_folders/', {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                folders = await foldersResponse.json();
+
+                renderDesktop();
+            } catch (error) {
+                console.error('Chyba při načítání souborů:', error);
+            }
+        }
+
+        function renderDesktop() {
+            const desktop = document.getElementById('desktop');
+            desktop.innerHTML = '';
+
+            if (files.length === 0 && folders.length === 0) {
+                desktop.innerHTML = '<div class="no-files-message">Váš desktop je prázdný. Začněte vytvářením nového souboru nebo složky.</div>';
+                return;
+            }
+
+            // Renderuj složky
+            folders.forEach(folder => {
+                const icon = createFolderElement(folder);
+                desktop.appendChild(icon);
+            });
+
+            // Renderuj soubory
+            files.forEach(file => {
+                const icon = createIconElement(file);
+                desktop.appendChild(icon);
+            });
+        }
+
+        function createFolderElement(folder) {
+            const div = document.createElement('div');
+            div.className = 'desktop-icon';
+            div.style.left = folder.x_position + 'px';
+            div.style.top = folder.y_position + 'px';
+            div.dataset.folderId = folder.id;
+
+            const icon = document.createElement('div');
+            icon.className = 'icon-image';
+            icon.style.background = 'linear-gradient(135deg, #FFA726 0%, #FB8C00 100%)';
+            icon.textContent = '📁';
+
+            const label = document.createElement('div');
+            label.className = 'icon-label';
+            label.textContent = folder.name;
+
+            div.appendChild(icon);
+            div.appendChild(label);
+
+            // Drag and drop
+            div.addEventListener('mousedown', (e) => startFolderDrag(e, folder, div));
+            div.addEventListener('dblclick', () => openFolder(folder));
+            div.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                selectFolder(folder, div);
+                showContextMenu(e.clientX, e.clientY, folder, 'folder');
+            });
+            div.addEventListener('click', () => selectFolder(folder, div));
+
+            return div;
+        }
+
+        function startFolderDrag(e, folder, element) {
+            if (e.button !== 0) return;
+
+            draggedItem = { folder, element, type: 'folder' };
+            const rect = element.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            element.classList.add('dragging');
+
+            function onMouseMove(e) {
+                element.style.left = (e.clientX - offsetX) + 'px';
+                element.style.top = (e.clientY - offsetY) + 'px';
+            }
+
+            function onMouseUp() {
+                element.classList.remove('dragging');
+                const newX = parseInt(element.style.left);
+                const newY = parseInt(element.style.top);
+                updateFolderPosition(folder.id, newX, newY);
+
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                draggedItem = null;
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        async function updateFolderPosition(folderId, x, y) {
+            try {
+                await fetch(`/api/folders/${folderId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ x_position: x, y_position: y })
+                });
+            } catch (error) {
+                console.error('Chyba při aktualizaci pozice složky:', error);
+            }
+        }
+
+        function selectFolder(folder, element) {
+            document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            selectedItem = { ...folder, type: 'folder' };
+        }
+
+        function openFolder(folder) {
+            // Otevře složku v novém okně
+            createFolderWindow(folder);
+        }
+
+        function createIconElement(file) {
+            const div = document.createElement('div');
+            div.className = 'desktop-icon';
+            div.style.left = file.x_position + 'px';
+            div.style.top = file.y_position + 'px';
+            div.dataset.fileId = file.id;
+
+            const iconTypes = {
+                'text': '📄',
+                'image': '🖼️',
+                'document': '📋',
+                'video': '🎬',
+                'audio': '🎵',
+                'archive': '📦',
+                'other': '📁'
+            };
+
+            const icon = document.createElement('div');
+            icon.className = 'icon-image';
+            icon.style.background = file.icon_color;
+            icon.textContent = iconTypes[file.file_type] || '📁';
+
+            const label = document.createElement('div');
+            label.className = 'icon-label';
+            label.textContent = file.name;
+
+            div.appendChild(icon);
+            div.appendChild(label);
+
+            // Drag and drop
+            div.addEventListener('mousedown', (e) => startDrag(e, file, div));
+            div.addEventListener('dblclick', () => openFile(file));
+            div.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                selectItem(file, div);
+                showContextMenu(e.clientX, e.clientY, file);
+            });
+            div.addEventListener('click', () => selectItem(file, div));
+
+            return div;
+        }
+
+        function startDrag(e, file, element) {
+            if (e.button !== 0) return;
+
+            draggedItem = { file, element };
+            const rect = element.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+
+            element.classList.add('dragging');
+
+            function onMouseMove(e) {
+                element.style.left = (e.clientX - offsetX) + 'px';
+                element.style.top = (e.clientY - offsetY) + 'px';
+            }
+
+            function onMouseUp() {
+                element.classList.remove('dragging');
+                const newX = parseInt(element.style.left);
+                const newY = parseInt(element.style.top);
+                updateFilePosition(file.id, newX, newY);
+
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                draggedItem = null;
+            }
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        async function updateFilePosition(fileId, x, y) {
+            try {
+                await fetch(`/api/files/${fileId}/update_position/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ x_position: x, y_position: y })
+                });
+            } catch (error) {
+                console.error('Chyba při aktualizaci pozice:', error);
+            }
+        }
+
+        function openFile(file) {
+            // Otevře soubor v novém okně
+            const windowId = 'window-file-' + file.id;
+            if (!document.getElementById(windowId)) {
+                createWindow(file, windowId);
+            }
+        }
+
+        function createFolderWindow(folder) {
+            const windowId = 'window-folder-' + folder.id;
+            if (document.getElementById(windowId)) {
+                return; // Okno už existuje
+            }
+
+            const window = document.createElement('div');
+            window.className = 'window';
+            window.id = windowId;
+            window.style.left = '150px';
+            window.style.top = '150px';
+            window.style.width = '700px';
+            window.style.height = '500px';
+            window.style.zIndex = '500';
+
+            window.innerHTML = `
+                <div class="window-header">
+                    <div class="window-title">📁 ${folder.name}</div>
+                    <div class="window-controls">
+                        <button class="window-btn" onclick="minimizeWindow('${windowId}')">−</button>
+                        <button class="window-btn" onclick="maximizeWindow('${windowId}')">□</button>
+                        <button class="window-btn" onclick="closeWindow('${windowId}')">✕</button>
+                    </div>
+                </div>
+                <div class="window-content" id="folder-content-${folder.id}">
+                    <p style="text-align: center; color: #999;">Načítání...</p>
+                </div>
+            `;
+
+            document.body.appendChild(window);
+            makeWindowDraggable(window);
+            makeWindowResizable(window);
+
+            // Načte obsah složky
+            loadFolderContent(folder.id);
+        }
+
+        async function loadFolderContent(folderId) {
+            try {
+                const response = await fetch(`/api/folders/${folderId}/contents/`, {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                const data = await response.json();
+                
+                const contentDiv = document.getElementById(`folder-content-${folderId}`);
+                if (data.folders.length === 0 && data.files.length === 0) {
+                    contentDiv.innerHTML = '<p style="text-align: center; color: #999; padding: 40px;">Složka je prázdná</p>';
+                } else {
+                    let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 20px; padding: 10px;">';
+                    
+                    data.folders.forEach(folder => {
+                        html += `
+                            <div style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                                 onmouseover="this.style.background='rgba(102,126,234,0.1)'" 
+                                 onmouseout="this.style.background='transparent'"
+                                 onclick="openFolder({id: ${folder.id}, name: '${folder.name}', x_position: ${folder.x_position}, y_position: ${folder.y_position}})">
+                                <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #FFA726, #FB8C00); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-bottom: 8px;">📁</div>
+                                <div style="font-size: 11px; text-align: center; word-wrap: break-word; width: 100%;">${folder.name}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    data.files.forEach(file => {
+                        const iconTypes = {
+                            'text': '📄',
+                            'image': '🖼️',
+                            'document': '📋',
+                            'video': '🎬',
+                            'audio': '🎵',
+                            'archive': '📦',
+                            'other': '📁'
+                        };
+                        html += `
+                            <div style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                                 onmouseover="this.style.background='rgba(102,126,234,0.1)'" 
+                                 onmouseout="this.style.background='transparent'"
+                                 ondblclick="openFile({id: ${file.id}, name: '${file.name}', file_type: '${file.file_type}', content: '${file.content || ''}', icon_color: '${file.icon_color}'})">
+                                <div style="width: 60px; height: 60px; background: ${file.icon_color}; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-bottom: 8px;">${iconTypes[file.file_type] || '📁'}</div>
+                                <div style="font-size: 11px; text-align: center; word-wrap: break-word; width: 100%;">${file.name}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div>';
+                    contentDiv.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Chyba při načítání obsahu složky:', error);
+            }
+        }
+
+        function createWindow(file, windowId) {
+            const window = document.createElement('div');
+            window.className = 'window';
+            window.id = windowId;
+            window.style.left = '100px';
+            window.style.top = '100px';
+            window.style.width = '600px';
+            window.style.height = '400px';
+            window.style.zIndex = '500';
+
+            window.innerHTML = `
+                <div class="window-header">
+                    <div class="window-title">${file.name}</div>
+                    <div class="window-controls">
+                        <button class="window-btn" onclick="minimizeWindow('${windowId}')">−</button>
+                        <button class="window-btn" onclick="maximizeWindow('${windowId}')">□</button>
+                        <button class="window-btn" onclick="closeWindow('${windowId}')">✕</button>
+                    </div>
+                </div>
+                <div class="window-content">
+                    <p>${file.content || 'Obsah souboru...'}</p>
+                </div>
+            `;
+
+            document.body.appendChild(window);
+
+            // Drag a resize
+            makeWindowDraggable(window);
+            makeWindowResizable(window);
+
+            windows[windowId] = file;
+        }
+
+        function makeWindowDraggable(windowEl) {
+            const header = windowEl.querySelector('.window-header');
+            let x = 0, y = 0, mouseX = 0, mouseY = 0;
+
+            header.addEventListener('mousedown', (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+                const rect = windowEl.getBoundingClientRect();
+                x = rect.left;
+                y = rect.top;
+
+                function onMouseMove(e) {
+                    const deltaX = e.clientX - mouseX;
+                    const deltaY = e.clientY - mouseY;
+                    windowEl.style.left = (x + deltaX) + 'px';
+                    windowEl.style.top = (y + deltaY) + 'px';
+                }
+
+                function onMouseUp() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                }
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        function makeWindowResizable(windowEl) {
+            const resizeHandle = document.createElement('div');
+            resizeHandle.style.cssText = 'position: absolute; bottom: 0; right: 0; width: 20px; height: 20px; cursor: se-resize; background: linear-gradient(135deg, transparent 50%, rgba(102, 126, 234, 0.5) 50%);';
+            windowEl.appendChild(resizeHandle);
+
+            resizeHandle.addEventListener('mousedown', (e) => {
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startWidth = windowEl.offsetWidth;
+                const startHeight = windowEl.offsetHeight;
+
+                function onMouseMove(e) {
+                    windowEl.style.width = (startWidth + e.clientX - startX) + 'px';
+                    windowEl.style.height = (startHeight + e.clientY - startY) + 'px';
+                }
+
+                function onMouseUp() {
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                }
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        }
+
+        function selectItem(file, element) {
+            document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
+            element.classList.add('selected');
+            selectedItem = { ...file, type: 'file' };
+        }
+
+        function showContextMenu(x, y, item, itemType) {
+            selectedItem = item ? { ...item, type: itemType || 'file' } : null;
+            const menu = document.getElementById('contextMenu');
+            menu.style.left = x + 'px';
+            menu.style.top = y + 'px';
+            menu.classList.remove('hidden');
+        }
+
+        function hideContextMenu() {
+            document.getElementById('contextMenu').classList.add('hidden');
+        }
+
+        function createNewFile() {
+            document.getElementById('newFileDialog').classList.add('active');
+        }
+
+        function createNewFolder() {
+            document.getElementById('newFolderDialog').classList.add('active');
+        }
+
+        function renameItem() {
+            if (selectedItem) {
+                document.getElementById('renameInput').value = selectedItem.name;
+                document.getElementById('renameDialog').classList.add('active');
+            }
+        }
+
+        async function deleteItem() {
+            if (selectedItem && confirm('Opravdu chcete smazat tuto položku?')) {
+                try {
+                    const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
+                    await fetch(`/api/${endpoint}/${selectedItem.id}/`, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRFToken': csrftoken
+                        }
+                    });
+                    loadDesktopItems();
+                    selectedItem = null;
+                } catch (error) {
+                    console.error('Chyba při mazání:', error);
+                }
+            }
+        }
+
+        function propertiesItem() {
+            if (selectedItem) {
+                const created = new Date(selectedItem.created_at).toLocaleString('cs-CZ');
+                if (selectedItem.type === 'folder') {
+                    alert(`Vlastnosti složky:\nNázev: ${selectedItem.name}\nVytvořeno: ${created}`);
+                } else {
+                    alert(`Vlastnosti souboru:\nNázev: ${selectedItem.name}\nTyp: ${selectedItem.file_type}\nVelikost: ${selectedItem.file_size || 0} B\nVytvořeno: ${created}`);
+                }
+            }
+        }
+
+        async function confirmRename(e) {
+            e.preventDefault();
+            if (selectedItem) {
+                const newName = document.getElementById('renameInput').value;
+                try {
+                    const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
+                    const url = selectedItem.type === 'folder' 
+                        ? `/api/${endpoint}/${selectedItem.id}/`
+                        : `/api/${endpoint}/${selectedItem.id}/rename/`;
+                    
+                    const method = selectedItem.type === 'folder' ? 'PATCH' : 'POST';
+                    
+                    await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ name: newName })
+                    });
+                    loadDesktopItems();
+                    closeDialog('renameDialog');
+                    selectedItem = null;
+                } catch (error) {
+                    console.error('Chyba při přejmenování:', error);
+                }
+            }
+        }
+
+        async function confirmNewFile(e) {
+            e.preventDefault();
+            const name = document.getElementById('newFileInput').value;
+            const type = document.getElementById('fileTypeSelect').value;
+            if (name) {
+                try {
+                    // Náhodná pozice, aby se ikony nepřekrývaly
+                    const x = Math.floor(Math.random() * 400) + 50;
+                    const y = Math.floor(Math.random() * 300) + 50;
+                    
+                    await fetch('/api/files/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ 
+                            name, 
+                            file_type: type,
+                            x_position: x,
+                            y_position: y
+                        })
+                    });
+                    loadDesktopItems();
+                    closeDialog('newFileDialog');
+                    document.getElementById('newFileInput').value = '';
+                } catch (error) {
+                    console.error('Chyba při vytváření souboru:', error);
+                    alert('Chyba: Soubor s tímto názvem již existuje nebo nastala jiná chyba.');
+                }
+            }
+        }
+
+        async function confirmNewFolder(e) {
+            e.preventDefault();
+            const name = document.getElementById('newFolderInput').value;
+            if (name) {
+                try {
+                    // Náhodná pozice
+                    const x = Math.floor(Math.random() * 400) + 50;
+                    const y = Math.floor(Math.random() * 300) + 50;
+                    
+                    await fetch('/api/folders/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ 
+                            name,
+                            x_position: x,
+                            y_position: y
+                        })
+                    });
+                    loadDesktopItems();
+                    closeDialog('newFolderDialog');
+                    document.getElementById('newFolderInput').value = '';
+                } catch (error) {
+                    console.error('Chyba při vytváření složky:', error);
+                    alert('Chyba: Složka s tímto názvem již existuje nebo nastala jiná chyba.');
+                }
+            }
+        }
+
+        function closeDialog(dialogId) {
+            document.getElementById(dialogId).classList.remove('active');
+        }
+
+        function minimizeWindow(windowId) {
+            document.getElementById(windowId).classList.add('minimized');
+        }
+
+        function maximizeWindow(windowId) {
+            const window = document.getElementById(windowId);
+            if (window.style.width === '100%') {
+                window.style.width = '600px';
+                window.style.height = '400px';
+                window.style.left = '100px';
+                window.style.top = '100px';
+            } else {
+                window.style.width = '100%';
+                window.style.height = '100%';
+                window.style.left = '0';
+                window.style.top = '0';
+            }
+        }
+
+        function closeWindow(windowId) {
+            document.getElementById(windowId).remove();
+            delete windows[windowId];
+        }
+
+        function logout() {
+            if (confirm('Opravdu se chcete odhlásit?')) {
+                window.location.href = '/admin/logout/';
+            }
+        }
+    </script>
+</body>
+</html>

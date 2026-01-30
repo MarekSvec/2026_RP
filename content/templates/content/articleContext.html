@@ -33,19 +33,6 @@
 
     <img src="{{ context.imageWar }}" alt="{{ war }}"
         style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
-
-    <p><strong>Kontext:</strong> {{ context.contextWar }}</p>
-    <p><strong>Účastníci</strong> {{ context.belligerents }}</p>
-    <p><strong>Významné bitvy:</strong></p>
-<ul>
-    {% for article in context.articles.all %}
-        <li>
-            <a href="/article/{{ article.id }}" style="color: #0077cc; text-decoration: none;">
-                {{ article.title }}
-            </a>
-        </li>
-    {% endfor %}
-</ul>
     <a href="/">Zpět na úvodní stránku</a>
     </div>
 {% endblock %}

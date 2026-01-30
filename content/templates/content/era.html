@@ -33,20 +33,6 @@
 
     <img src="{{ era.imageEra }}" alt="{{ era }}"
         style="max-width: 100%; height: auto; display: block; margin: 0 auto 20px; border-radius: 5px;">
-
-    <p><strong>Éra:</strong> {{ era.contextEra }}</p>
-    <p><strong>Začátek</strong> {{ era.start }}</p>
-    <p><strong>Konec</strong> {{ era.end }}</p>
-    <p><strong>Významné bitvy:</strong></p>
-<ul>
-    {% for article in era.articles.all %}
-        <li>
-            <a href="/article/{{ article.id }}" style="color: #0077cc; text-decoration: none;">
-                {{ article.title }}
-            </a>
-        </li>
-    {% endfor %}
-    </ul>
     <a href="/">Zpět na úvodní stránku</a>
     </div>
 {% endblock %}
