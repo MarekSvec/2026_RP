@@ -66,6 +66,7 @@ def register_view(request):
         
         # Vytvoření uživatele
         user = User.objects.create_user(username=username, email=email, password=password)
+        user.backend = 'django.contrib.auth.backends.ModelBackend'
         login(request, user)
         return redirect('desktop')
     
