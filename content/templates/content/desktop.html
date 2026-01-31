@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloud Desktop</title>
+    <title>Flux Horizon</title>
     <style>
         * {
             margin: 0;
@@ -491,7 +491,7 @@
         async function loadDesktopItems() {
             try {
                 // Načte soubory
-                const filesResponse = await fetch('/api/files/desktop_files/', {
+                const filesResponse = await fetch('/api/api/files/desktop_files/', {
                     headers: {
                         'X-CSRFToken': csrftoken
                     }
@@ -499,7 +499,7 @@
                 files = await filesResponse.json();
 
                 // Načte složky na desktopu
-                const foldersResponse = await fetch('/api/folders/root_folders/', {
+                const foldersResponse = await fetch('/api/api/folders/root_folders/', {
                     headers: {
                         'X-CSRFToken': csrftoken
                     }
@@ -598,7 +598,7 @@
 
         async function updateFolderPosition(folderId, x, y) {
             try {
-                await fetch(`/api/folders/${folderId}/`, {
+                await fetch(`/api/api/folders/${folderId}/`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -696,7 +696,7 @@
 
         async function updateFilePosition(fileId, x, y) {
             try {
-                await fetch(`/api/files/${fileId}/update_position/`, {
+                await fetch(`/api/api/files/${fileId}/update_position/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -756,7 +756,7 @@
 
         async function loadFolderContent(folderId) {
             try {
-                const response = await fetch(`/api/folders/${folderId}/contents/`, {
+                const response = await fetch(`/api/api/folders/${folderId}/contents/`, {
                     headers: {
                         'X-CSRFToken': csrftoken
                     }
@@ -998,7 +998,7 @@
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
                     
-                    await fetch('/api/files/', {
+                    await fetch('/api/api/files/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1030,7 +1030,7 @@
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
                     
-                    await fetch('/api/folders/', {
+                    await fetch('/api/api/folders/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1082,7 +1082,7 @@
 
         function logout() {
             if (confirm('Opravdu se chcete odhlásit?')) {
-                window.location.href = '/admin/logout/';
+                window.location.href = '/logout/';
             }
         }
     </script>

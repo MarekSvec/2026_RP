@@ -11,16 +11,15 @@ router.register(r'api/windows', content.views.DesktopWindowViewSet, basename='wi
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', content.views.homepage),
-    path('article/<int:id>/', content.views.article),
-    path('context/<int:id>/', content.views.context),
-    path('tactics/<str:tactics_link>/', content.views.article_tactics),
-    path('era/<int:id>', content.views.era),
+    path('', content.views.desktop, name='desktop'),
+    path('login/', content.views.login_view, name='login'),
+    path('register/', content.views.register_view, name='register'),
+    path('logout/', content.views.logout_view, name='logout'),
     
-    # Desktop aplikace
-    path('desktop/', content.views.desktop, name='desktop'),
+    # Google OAuth
+    path('accounts/', include('allauth.urls')),
     
     # REST API
-    path('', include(router.urls)),
+    path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
 ]

@@ -1,43 +1,83 @@
-from django.shortcuts import render
-from django.http import HttpResponse
+from django.shortcuts import render, redirect
 from django.db import models
+from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, login, logout
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Article, War, Tactics, Era, DesktopFile, DesktopFolder, DesktopWindow
+from .models import DesktopFile, DesktopFolder, DesktopWindow
 from .serializers import DesktopFileSerializer, DesktopFolderSerializer, DesktopWindowSerializer
 
-import requests
-import json
+
+# ===== AUTHENTICATION VIEWS =====
+def login_view(request):
+    """Přihlášení uživatele"""
+    if request.user.is_authenticated:
+        return redirect('desktop')
+    
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            login(request, user)
+            return redirect('desktop')
+        else:
+            return render(request, 'content/login.html', {
+                'login_error': 'Nesprávné uživatelské jméno nebo heslo'
+            })
+    
+    return render(request, 'content/login.html')
 
 
-# ===== PŮVODNÍ VIEWS =====
-def homepage(request):
-    articles = Article.objects.all()
-    return render(request, 'content/homepage.html', {'articles': articles})
+def register_view(request):
+    """Registrace nového uživatele"""
+    if request.user.is_authenticated:
+        return redirect('desktop')
+    
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        password_confirm = request.POST.get('password_confirm')
+        
+        errors = []
+        
+        # Validace
+        if not username or not email or not password or not password_confirm:
+            errors.append('Všechna pole jsou povinná')
+        elif password != password_confirm:
+            errors.append('Hesla se neshodují')
+        elif len(password) < 6:
+            errors.append('Heslo musí mít alespoň 6 znaků')
+        elif User.objects.filter(username=username).exists():
+            errors.append('Toto uživatelské jméno již existuje')
+        elif User.objects.filter(email=email).exists():
+            errors.append('Tento email již existuje')
+        
+        if errors:
+            return render(request, 'content/login.html', {
+                'signup_errors': errors
+            })
+        
+        # Vytvoření uživatele
+        user = User.objects.create_user(username=username, email=email, password=password)
+        login(request, user)
+        return redirect('desktop')
+    
+    return render(request, 'content/login.html')
 
 
-def article(request, id):
-    article = Article.objects.get(pk=id)
-    return render(request, 'content/article.html', {'article': article})
-
-
-def context(request, id):
-    context = War.objects.get(pk=id)
-    return render(request, 'content/articleContext.html', {'context': context})
-
-
-def article_tactics(request, tactics_link):
-    tactics_articles = Article.objects.filter(tactics_link=tactics_link)
-    return render(request, 'content/articleTactics.html', {'tactics_articles': tactics_articles, 'tactics': tactics_link})
-
-
-def era(request, id):
-    era = Era.objects.get(pk=id)
-    return render(request, 'content/era.html', {'era': era})
+def logout_view(request):
+    """Odhlášení uživatele"""
+    logout(request)
+    return redirect('login')
+    
+    return render(request, 'content/login.html')
 
 
 # ===== DESKTOP APP VIEWS =====
