@@ -25,6 +25,7 @@
             height: 100vh;
             background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="rgba(100,100,150,0.2)"/><rect width="100" height="100" fill="url(%23grid)"/></svg>');
             overflow: hidden;
+            padding-bottom: 120px;
         }
 
         .taskbar {
@@ -32,14 +33,15 @@
             bottom: 0;
             left: 0;
             right: 0;
-            height: 60px;
+            min-height: 60px;
             background: rgba(0, 0, 0, 0.8);
             border-top: 1px solid rgba(255, 255, 255, 0.2);
             display: flex;
-            align-items: center;
-            padding: 0 20px;
+            align-items: flex-start;
+            padding: 8px 20px;
             gap: 10px;
             z-index: 1000;
+            flex-wrap: wrap;
         }
 
         .taskbar-item {
@@ -70,6 +72,7 @@
             margin-left: auto;
             display: flex;
             gap: 10px;
+            align-self: flex-start;
         }
 
         .btn {
@@ -357,11 +360,11 @@
     </div>
 
     <div class="taskbar" id="taskbar">
-        <div id="taskbar-windows" style="display: flex; gap: 8px; flex: 1;">
+        <div id="taskbar-windows" style="display: flex; gap: 8px; flex: 1; flex-wrap: wrap; align-content: flex-start;">
             <!-- Otevřená okna se budou přidávat sem -->
         </div>
         <div class="button-group">
-            <button class="btn" onclick="createNewFile()">+ Nový soubor</button>
+            <button class="btn" onclick="createNewFile()">📝 Notepad</button>
             <button class="btn" onclick="createNewFolder()">+ Nová složka</button>
             <button class="btn" onclick="logout()">Odhlásit se</button>
         </div>
@@ -394,21 +397,11 @@
 
     <div class="dialog" id="newFileDialog">
         <div class="dialog-content">
-            <div class="dialog-title">Nový soubor</div>
+            <div class="dialog-title">📝 Notepad - Nový soubor</div>
             <form onsubmit="confirmNewFile(event)">
                 <div class="form-group">
                     <label for="newFileInput" class="form-label">Název souboru:</label>
                     <input type="text" id="newFileInput" class="form-input" autofocus>
-                </div>
-                <div class="form-group">
-                    <label for="fileTypeSelect" class="form-label">Typ souboru:</label>
-                    <select id="fileTypeSelect" class="form-input">
-                        <option value="text">Text File</option>
-                        <option value="image">Image</option>
-                        <option value="document">Document</option>
-                        <option value="video">Video</option>
-                        <option value="audio">Audio</option>
-                    </select>
                 </div>
                 <div class="form-buttons">
                     <button type="button" class="btn" onclick="closeDialog('newFileDialog')">Zrušit</button>
@@ -457,6 +450,8 @@
         let windows = {};
         let draggedItem = null;
         let selectedItem = null;
+        let windowOffset = { x: 0, y: 0 };
+        const WINDOW_OFFSET = 30; // Pixely pro odsazení nových oken
         let offsetX = 0;
         let offsetY = 0;
 
@@ -490,6 +485,30 @@
                 
                 if (isMenuVisible && !isClickOnMenu) {
                     hideContextMenu();
+                }
+            });
+
+            // Drag and drop event listeners
+            desktop.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                desktop.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
+            });
+
+            desktop.addEventListener('dragleave', (e) => {
+                if (e.target === desktop) {
+                    desktop.style.backgroundColor = '';
+                }
+            });
+
+            desktop.addEventListener('drop', (e) => {
+                e.preventDefault();
+                desktop.style.backgroundColor = '';
+                if (e.dataTransfer.files.length > 0) {
+                    const files = Array.from(e.dataTransfer.files);
+                    files.forEach(file => {
+                        uploadFileFromDrop(file, null, e.clientX, e.clientY);
+                    });
                 }
             });
         }
@@ -680,7 +699,43 @@
 
         function openFolder(folder) {
             // Otevře složku v novém okně
-            createFolderWindow(folder);
+            const windowId = 'window-folder-' + folder.id;
+            const existingWindow = document.getElementById(windowId);
+            
+            if (existingWindow) {
+                // Okno již existuje, přesunout do popředí a odminimalizovat
+                const maxZIndex = Math.max(...Object.values(windows).map((w, i) => {
+                    const el = document.getElementById(Object.keys(windows)[i]);
+                    return el ? parseInt(window.getComputedStyle(el).zIndex) || 500 : 500;
+                }));
+                
+                existingWindow.style.zIndex = maxZIndex + 1;
+                
+                // Pokud je minimalizované, zobrazit
+                if (existingWindow.classList.contains('minimized')) {
+                    existingWindow.classList.remove('minimized');
+                    const taskbarItem = document.getElementById('taskbar-' + windowId);
+                    if (taskbarItem) {
+                        taskbarItem.classList.remove('active');
+                    }
+                }
+            } else {
+                // Okno neexistuje, vytvořit nové
+                createFolderWindow(folder);
+            }
+        }
+
+        function getColorForFileType(fileType) {
+            const colors = {
+                'text': '#4CAF50',      // Zelená
+                'image': '#4A90E2',     // Modrá
+                'document': '#E27D5D',  // Červeno-oranžová
+                'video': '#9B59B6',     // Fialová
+                'audio': '#F5F5F5',     // Bílá
+                'archive': '#F5A623',   // Oranžová
+                'folder': '#4A90E2'     // Modrá
+            };
+            return colors[fileType] || '#4A90E2';
         }
 
         function createIconElement(file) {
@@ -921,16 +976,34 @@
         function openFile(file) {
             // Otevře soubor v novém okně
             const windowId = 'window-file-' + file.id;
-            if (!document.getElementById(windowId)) {
+            const existingWindow = document.getElementById(windowId);
+            
+            if (!existingWindow) {
+                // Okno neexistuje, vytvořit nové
                 createWindow(file, windowId);
+            } else {
+                // Okno již existuje, přesunout do popředí a odminimalizovat
+                const maxZIndex = Math.max(...Object.values(windows).map((w, i) => {
+                    const el = document.getElementById(Object.keys(windows)[i]);
+                    return el ? parseInt(window.getComputedStyle(el).zIndex) || 500 : 500;
+                }));
+                
+                existingWindow.style.zIndex = maxZIndex + 1;
+                
+                // Pokud je minimalizované, zobrazit
+                if (existingWindow.classList.contains('minimized')) {
+                    existingWindow.classList.remove('minimized');
+                    const taskbarItem = document.getElementById('taskbar-' + windowId);
+                    if (taskbarItem) {
+                        taskbarItem.classList.remove('active');
+                    }
+                }
             }
         }
 
         function createFolderWindow(folder) {
             const windowId = 'window-folder-' + folder.id;
-            if (document.getElementById(windowId)) {
-                return; // Okno už existuje
-            }
+            // Kontrola se nyní provádí v openFolder(), zde se předpokládá, že okno neexistuje
 
             const window = document.createElement('div');
             window.className = 'window';
@@ -1046,31 +1119,136 @@
             }
         }
 
+        function getNextWindowPosition() {
+            // Vypočítat pozici pro nové okno s odsazením
+            let x = 100 + windowOffset.x;
+            let y = 100 + windowOffset.y;
+
+            // Aktualizovat offset pro další okno
+            windowOffset.x += WINDOW_OFFSET;
+            windowOffset.y += WINDOW_OFFSET;
+
+            // Reset offset pokud je okno mimo viewport
+            if (x > window.innerWidth - 300 || y > window.innerHeight - 200) {
+                windowOffset.x = 0;
+                windowOffset.y = 0;
+            }
+
+            return { x, y };
+        }
+
+        function checkDuplicateFileName(fileName, fileType, targetFolder = null) {
+            // Kontrola duplicit v seznamu souborů
+            return files.some(f => 
+                f.name === fileName && 
+                f.file_type === fileType &&
+                f.folder === targetFolder
+            );
+        }
+
+        function getUniqueFileName(baseName, fileType, targetFolder = null) {
+            // Pokud jméno již existuje, přidat číslo
+            let fileName = baseName;
+            let counter = 1;
+            const extension = baseName.includes('.') ? baseName.substring(baseName.lastIndexOf('.')) : '';
+            const nameWithoutExt = baseName.includes('.') ? baseName.substring(0, baseName.lastIndexOf('.')) : baseName;
+
+            while (checkDuplicateFileName(fileName, fileType, targetFolder)) {
+                fileName = `${nameWithoutExt} (${counter})${extension}`;
+                counter++;
+            }
+            return fileName;
+        }
+
         function createWindow(file, windowId) {
             const window = document.createElement('div');
             window.className = 'window';
             window.id = windowId;
-            window.style.left = '100px';
-            window.style.top = '100px';
+            
+            // Získat smart pozici pro okno
+            const pos = getNextWindowPosition();
+            window.style.left = pos.x + 'px';
+            window.style.top = pos.y + 'px';
             window.style.width = '600px';
             window.style.height = '400px';
             window.style.zIndex = '500';
 
-            // Rozlišit mezi textovými soubory a ostatními
-            const isTextFile = file.file_type === 'text' || file.name.endsWith('.txt');
-            const contentHtml = isTextFile ? `
-                <div style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
-                    <textarea id="file-content-${file.id}" style="flex: 1; padding: 10px; font-family: monospace; border: none; resize: none; outline: none;">${file.content || ''}</textarea>
-                    <div style="padding: 10px; background: #f5f5f5; border-top: 1px solid #ddd; display: flex; gap: 10px;">
-                        <button class="btn" onclick="saveFileContent(${file.id}, '${file.name.replace(/'/g, "\\'")}')" style="flex: 1;">Uložit</button>
-                        <button class="btn" onclick="resetFileContent(${file.id})" style="flex: 1;">Zrušit</button>
+            // Určit typ obsahu a vykreslit příslušný obsah
+            let contentHtml = '';
+            
+            if (file.file_type === 'text' || file.name.endsWith('.txt')) {
+                // Textový soubor
+                contentHtml = `
+                    <div style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+                        <textarea id="file-content-${file.id}" style="flex: 1; padding: 10px; font-family: monospace; border: none; resize: none; outline: none;">${file.content || ''}</textarea>
+                        <div style="padding: 10px; background: #f5f5f5; border-top: 1px solid #ddd; display: flex; gap: 10px;">
+                            <button class="btn" onclick="saveFileContent(${file.id}, '${file.name.replace(/'/g, "\\'")}')" style="flex: 1;">Uložit</button>
+                            <button class="btn" onclick="resetFileContent(${file.id})" style="flex: 1;">Zrušit</button>
+                        </div>
                     </div>
-                </div>
-            ` : `
-                <div class="window-content">
-                    <p>${file.content || 'Obsah souboru...'}</p>
-                </div>
-            `;
+                `;
+            } else if (file.file_type === 'image') {
+                // Obrázek
+                contentHtml = `
+                    <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; align-items: center; justify-content: center; padding: 20px;">
+                        <img src="${file.content || ''}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="${file.name}" />
+                    </div>
+                `;
+            } else if (file.file_type === 'video') {
+                // Video
+                contentHtml = `
+                    <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 10px;">
+                        <video style="width: 100%; height: 100%; object-fit: contain;" controls>
+                            <source src="${file.content || ''}" />
+                            Váš prohlížeč nepodporuje video tag.
+                        </video>
+                    </div>
+                `;
+            } else if (file.file_type === 'audio') {
+                // Audio
+                contentHtml = `
+                    <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; justify-content: center; align-items: center; padding: 20px;">
+                        <audio style="width: 90%;" controls>
+                            <source src="${file.content || ''}" />
+                            Váš prohlížeč nepodporuje audio tag.
+                        </audio>
+                    </div>
+                `;
+            } else if (file.file_type === 'document') {
+                // Dokument (PDF, Word, PowerPoint apod.)
+                const fileName = file.name.toLowerCase();
+                if (fileName.endsWith('.pdf')) {
+                    // PDF - zobrazit jako embed
+                    contentHtml = `
+                        <div style="display: flex; flex-direction: column; flex: 1; overflow: auto;">
+                            <iframe src="${file.content}" style="width: 100%; height: 100%; border: none;"></iframe>
+                        </div>
+                    `;
+                } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pptx') || fileName.endsWith('.ppt')) {
+                    // Word, PowerPoint - zobrazit zprávu se tlačítkem stažení
+                    contentHtml = `
+                        <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 20px; align-items: center; justify-content: center;">
+                            <p style="font-size: 16px; color: #666;">${file.name}</p>
+                            <p style="color: #999; margin-top: 10px;">Soubor ${file.name.split('.').pop().toUpperCase()} se nedá zobrazit v prohlížeči</p>
+                            <button class="btn" onclick="downloadFile(${file.id}, '${file.name.replace(/'/g, "\\'")}', '${file.content.replace(/'/g, "\\'")}')" style="margin-top: 20px;">Stáhnout soubor</button>
+                        </div>
+                    `;
+                } else {
+                    // Ostatní dokumenty (text content)
+                    contentHtml = `
+                        <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 20px;">
+                            <p style="white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${file.content || 'Obsah dokumentu...'}</p>
+                        </div>
+                    `;
+                }
+            } else {
+                // Ostatní
+                contentHtml = `
+                    <div class="window-content">
+                        <p>${file.content || 'Obsah souboru...'}</p>
+                    </div>
+                `;
+            }
 
             window.innerHTML = `
                 <div class="window-header">
@@ -1085,6 +1263,26 @@
             `;
 
             document.body.appendChild(window);
+
+            // Přidat drop event listener na okno pro drop souborů
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                window.style.opacity = '0.7';
+            });
+
+            window.addEventListener('dragleave', (e) => {
+                if (e.target === window) {
+                    window.style.opacity = '1';
+                }
+            });
+
+            window.addEventListener('drop', (e) => {
+                e.preventDefault();
+                window.style.opacity = '1';
+                if (e.dataTransfer.files.length > 0) {
+                    uploadFileFromDrop(e.dataTransfer.files[0], file.file_type);
+                }
+            });
 
             // Drag a resize
             makeWindowDraggable(window);
@@ -1411,12 +1609,193 @@
             }
         }
 
+        function downloadFile(fileId, fileName, fileContent) {
+            try {
+                // Pokud je obsah data URL (pro binární soubory)
+                if (fileContent.startsWith('data:')) {
+                    const link = document.createElement('a');
+                    link.href = fileContent;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    // Pro textové soubory, vytvořit blob
+                    const blob = new Blob([fileContent], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                }
+            } catch (error) {
+                console.error('Chyba při stahování souboru:', error);
+                alert('Chyba při stahování: ' + error.message);
+            }
+        }
+
+        async function uploadFileFromDrop(droppedFile, targetFileType = null, posX = null, posY = null) {
+            try {
+                // Určit typ souboru na základě MIME type nebo přípony
+                let fileType = 'text';
+                const fileName = droppedFile.name.toLowerCase();
+                const mimeType = droppedFile.type;
+                
+                if (mimeType.startsWith('image/')) {
+                    fileType = 'image';
+                } else if (mimeType.startsWith('video/')) {
+                    fileType = 'video';
+                } else if (mimeType.startsWith('audio/')) {
+                    fileType = 'audio';
+                } else if (mimeType === 'application/pdf' || fileName.endsWith('.pdf')) {
+                    fileType = 'document';
+                } else if (mimeType === 'application/msword' || fileName.endsWith('.doc')) {
+                    fileType = 'document';
+                } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileName.endsWith('.docx')) {
+                    fileType = 'document';
+                } else if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' || fileName.endsWith('.pptx')) {
+                    fileType = 'document';
+                } else if (mimeType === 'application/vnd.ms-powerpoint' || fileName.endsWith('.ppt')) {
+                    fileType = 'document';
+                } else if (mimeType.startsWith('application/vnd') || mimeType.startsWith('application/x-')) {
+                    fileType = 'document';
+                }
+
+                // Pokud je zadán target file type, použít jej
+                if (targetFileType) {
+                    fileType = targetFileType;
+                }
+
+                // Přečíst obsah souboru
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const content = e.target.result; // Data URL pro obrázky/video/audio, text obsah pro ostatní
+
+                        // Ověřit duplicitní jméno a získat unikátní jméno
+                        let uniqueFileName = droppedFile.name;
+                        if (checkDuplicateFileName(droppedFile.name, fileType, null)) {
+                            uniqueFileName = getUniqueFileName(droppedFile.name, fileType, null);
+                        }
+
+                        // Náhodná pozice, pokud není zadána
+                        const x = posX || Math.floor(Math.random() * 400) + 50;
+                        const y = posY || Math.floor(Math.random() * 300) + 50;
+
+                        // Poslat na server
+                        const response = await fetch('/api/api/files/', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrftoken
+                            },
+                            body: JSON.stringify({
+                                name: uniqueFileName,
+                                file_type: fileType,
+                                content: content,
+                                x_position: x,
+                                y_position: y,
+                                icon_color: getColorForFileType(fileType)
+                            })
+                        });
+
+                        if (!response.ok) {
+                            const error = await response.json();
+                            console.error('API chyba:', error);
+                            alert('Chyba při nahrávání souboru: ' + JSON.stringify(error));
+                            return;
+                        }
+
+                        const uploadedFile = await response.json();
+                        
+                        // Přidat soubor do paměti
+                        files.push(uploadedFile);
+                        
+                        // Aktualizovat desktop
+                        renderDesktop();
+                        
+                        // Pokud je otevřeno okno image/video/audio/document typu, aktualizovat obsah
+                        if (targetFileType && (targetFileType === 'image' || targetFileType === 'video' || targetFileType === 'audio' || targetFileType === 'document')) {
+                            // Najít všechna otevřená okna daného typu
+                            let updated = false;
+                            Object.keys(windows).forEach(windowId => {
+                                if (!updated) {
+                                    const windowEl = document.getElementById(windowId);
+                                    if (windowEl && windows[windowId].file_type === targetFileType) {
+                                        // Aktualizovat obsah existujícího okna
+                                        windows[windowId] = uploadedFile;
+                                        
+                                        // Změnit nadpis okna
+                                        const titleEl = windowEl.querySelector('.window-title');
+                                        if (titleEl) {
+                                            titleEl.textContent = uploadedFile.name;
+                                        }
+                                        
+                                        // Aktualizovat obsah
+                                        let newContentHtml = '';
+                                        if (targetFileType === 'image') {
+                                            newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto; align-items: center; justify-content: center; padding: 20px;"><img src="${uploadedFile.content || ''}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="${uploadedFile.name}" /></div>`;
+                                        } else if (targetFileType === 'video') {
+                                            newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 10px;"><video style="width: 100%; height: 100%; object-fit: contain;" controls><source src="${uploadedFile.content || ''}" /></video></div>`;
+                                        } else if (targetFileType === 'audio') {
+                                            newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto; justify-content: center; align-items: center; padding: 20px;"><audio style="width: 90%;" controls><source src="${uploadedFile.content || ''}" /></audio></div>`;
+                                        } else if (targetFileType === 'document') {
+                                            const fileName = uploadedFile.name.toLowerCase();
+                                            if (fileName.endsWith('.pdf')) {
+                                                newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto;"><iframe src="${uploadedFile.content}" style="width: 100%; height: 100%; border: none;"></iframe></div>`;
+                                            } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pptx') || fileName.endsWith('.ppt')) {
+                                                newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 20px; align-items: center; justify-content: center;"><p style="font-size: 16px; color: #666;">${uploadedFile.name}</p><p style="color: #999; margin-top: 10px;">Soubor ${uploadedFile.name.split('.').pop().toUpperCase()} se nedá zobrazit v prohlížeči</p><button class="btn" onclick="downloadFile(${uploadedFile.id}, '${uploadedFile.name.replace(/'/g, "\\'")}', '${uploadedFile.content.replace(/'/g, "\\'")}')" style="margin-top: 20px;">Stáhnout soubor</button></div>`;
+                                            } else {
+                                                newContentHtml = `<div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 20px;"><p style="white-space: pre-wrap; word-wrap: break-word; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">${uploadedFile.content || 'Obsah dokumentu...'}</p></div>`;
+                                            }
+                                        }
+                                        
+                                        // Nahradit obsah okna (zachovat header)
+                                        const header = windowEl.querySelector('.window-header');
+                                        windowEl.innerHTML = header.outerHTML + newContentHtml;
+                                        
+                                        updated = true;
+                                    }
+                                }
+                            });
+                        }
+                        
+                        alert(`Soubor "${uniqueFileName}" byl úspěšně nahrán`);
+                        
+                    } catch (error) {
+                        console.error('Chyba:', error);
+                        alert('Chyba při zpracování souboru: ' + error.message);
+                    }
+                };
+
+                // Přečíst soubor podle typu
+                if (fileType === 'text') {
+                    reader.readAsText(droppedFile);
+                } else {
+                    // Pro obrázky, video, audio, dokumenty - přečíst jako data URL
+                    reader.readAsDataURL(droppedFile);
+                }
+
+            } catch (error) {
+                console.error('Chyba:', error);
+                alert('Chyba: ' + error.message);
+            }
+        }
+
         async function confirmNewFile(e) {
             e.preventDefault();
-            const name = document.getElementById('newFileInput').value;
-            const type = document.getElementById('fileTypeSelect').value;
+            let name = document.getElementById('newFileInput').value;
             if (name) {
                 try {
+                    // Ověřit duplicitní jméno a získat unikátní jméno
+                    if (checkDuplicateFileName(name, 'text', null)) {
+                        name = getUniqueFileName(name, 'text', null);
+                        alert(`Soubor se stejným jménem již existuje. Soubor byl přejmenován na: "${name}"`);
+                    }
+
                     // Náhodná pozice, aby se ikony nepřekrývaly
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
@@ -1429,9 +1808,10 @@
                         },
                         body: JSON.stringify({ 
                             name, 
-                            file_type: type,
+                            file_type: 'text',
                             x_position: x,
-                            y_position: y
+                            y_position: y,
+                            icon_color: getColorForFileType('text')
                         })
                     });
                     
@@ -1496,8 +1876,30 @@
         }
 
         function minimizeWindow(windowId) {
-            document.getElementById(windowId).classList.add('minimized');
-            addToTaskbar(windowId);
+            const window = document.getElementById(windowId);
+            
+            // Toggle minimalizaci - pokud je už minimalizované, tak odminimalizovat
+            if (window.classList.contains('minimized')) {
+                window.classList.remove('minimized');
+                const taskbarItem = document.getElementById('taskbar-' + windowId);
+                if (taskbarItem) {
+                    taskbarItem.classList.add('active');  // Gradient barva pro viditelné okno
+                }
+                
+                // Zvýšit z-index aby se okno dostalo do popředí
+                const maxZIndex = Math.max(...Array.from(document.querySelectorAll('.window')).map(el => {
+                    const z = parseInt(el.style.zIndex) || parseInt(window.getComputedStyle(el).zIndex) || 0;
+                    return isNaN(z) ? 0 : z;
+                }));
+                window.style.zIndex = (maxZIndex + 1).toString();
+            } else {
+                window.classList.add('minimized');
+                const taskbarItem = document.getElementById('taskbar-' + windowId);
+                if (taskbarItem) {
+                    taskbarItem.classList.remove('active');  // Tmavá barva pro minimalizované okno
+                }
+                addToTaskbar(windowId);
+            }
         }
 
         function addToTaskbar(windowId) {
@@ -1523,11 +1925,20 @@
             taskbarItem.onclick = () => {
                 const w = document.getElementById(windowId);
                 if (w.classList.contains('minimized')) {
+                    // Odminimalizovat a přesunout do popředí
                     w.classList.remove('minimized');
-                    taskbarItem.classList.remove('active');
+                    taskbarItem.classList.add('active');  // Přidat active třída když je viditelné
+                    
+                    // Zvýšit z-index aby se okno dostalo do popředí
+                    const maxZIndex = Math.max(...Array.from(document.querySelectorAll('.window')).map(el => {
+                        const z = parseInt(el.style.zIndex) || parseInt(window.getComputedStyle(el).zIndex) || 0;
+                        return isNaN(z) ? 0 : z;
+                    }));
+                    w.style.zIndex = (maxZIndex + 1).toString();
                 } else {
+                    // Minimalizovat
                     w.classList.add('minimized');
-                    taskbarItem.classList.add('active');
+                    taskbarItem.classList.remove('active');  // Odebrat active třída když je minimalizované
                 }
             };
             
