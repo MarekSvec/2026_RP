@@ -30,7 +30,13 @@ SECRET_KEY = 'django-insecure-nw@m)#hgtl+@kb0mkzkdnuw8equk51xg=8to32y(e@cm@dj-#9
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
+
+# CSRF and CORS settings
+CSRF_TRUSTED_ORIGINS = [
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+]
 
 
 # Application definition
@@ -93,9 +99,9 @@ import os
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'railway'),
-        'USER': os.getenv('DB_USER', 'postgres'),
-        'PASSWORD': os.getenv('DB_PASSWORD'),
+        'NAME': os.getenv('DB_NAME', 'cms_db'),
+        'USER': os.getenv('DB_USER', 'cms_user'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'django_cms_secure_2026'),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
     }
