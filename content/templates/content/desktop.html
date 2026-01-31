@@ -351,11 +351,15 @@
     </style>
 </head>
 <body>
+    {% csrf_token %}
     <div class="desktop" id="desktop">
         <!-- Desktop ikony budou vygenerovány JavaScriptem -->
     </div>
 
     <div class="taskbar" id="taskbar">
+        <div id="taskbar-windows" style="display: flex; gap: 8px; flex: 1;">
+            <!-- Otevřená okna se budou přidávat sem -->
+        </div>
         <div class="button-group">
             <button class="btn" onclick="createNewFile()">+ Nový soubor</button>
             <button class="btn" onclick="createNewFolder()">+ Nová složka</button>
@@ -365,9 +369,10 @@
 
     <!-- Kontextové menu -->
     <div class="context-menu hidden" id="contextMenu">
-        <div class="context-menu-item" onclick="renameItem()">Přejmenovat</div>
-        <div class="context-menu-item" onclick="deleteItem()">Smazat</div>
-        <div class="context-menu-item" onclick="propertiesItem()">Vlastnosti</div>
+        <div class="context-menu-item" onclick="event.stopPropagation(); renameItem(); hideContextMenu();">Přejmenovat</div>
+        <div class="context-menu-item" id="extractFromFolderOption" onclick="event.stopPropagation(); extractFromFolder(); hideContextMenu();" style="display:none;">Vyndat ze složky</div>
+        <div class="context-menu-item" onclick="event.stopPropagation(); deleteItem(); hideContextMenu();">Smazat</div>
+        <div class="context-menu-item" onclick="event.stopPropagation(); propertiesItem(); hideContextMenu();">Vlastnosti</div>
     </div>
 
     <!-- Dialogy -->
@@ -376,7 +381,7 @@
             <div class="dialog-title">Přejmenovat</div>
             <form onsubmit="confirmRename(event)">
                 <div class="form-group">
-                    <label class="form-label">Nový název:</label>
+                    <label for="renameInput" class="form-label">Nový název:</label>
                     <input type="text" id="renameInput" class="form-input" autofocus>
                 </div>
                 <div class="form-buttons">
@@ -392,11 +397,11 @@
             <div class="dialog-title">Nový soubor</div>
             <form onsubmit="confirmNewFile(event)">
                 <div class="form-group">
-                    <label class="form-label">Název souboru:</label>
+                    <label for="newFileInput" class="form-label">Název souboru:</label>
                     <input type="text" id="newFileInput" class="form-input" autofocus>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Typ souboru:</label>
+                    <label for="fileTypeSelect" class="form-label">Typ souboru:</label>
                     <select id="fileTypeSelect" class="form-input">
                         <option value="text">Text File</option>
                         <option value="image">Image</option>
@@ -418,7 +423,7 @@
             <div class="dialog-title">Nová složka</div>
             <form onsubmit="confirmNewFolder(event)">
                 <div class="form-group">
-                    <label class="form-label">Název složky:</label>
+                    <label for="newFolderInput" class="form-label">Název složky:</label>
                     <input type="text" id="newFolderInput" class="form-input" autofocus>
                 </div>
                 <div class="form-buttons">
@@ -429,35 +434,32 @@
         </div>
     </div>
 
+    <div class="dialog" id="folderNameDialog">
+        <div class="dialog-content">
+            <div class="dialog-title">Pojmenuj novou složku</div>
+            <form onsubmit="confirmNewFolderName(event)">
+                <div class="form-group">
+                    <label for="folderNameInput" class="form-label">Název složky:</label>
+                    <input type="text" id="folderNameInput" class="form-input" autofocus>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn" onclick="closeDialog('folderNameDialog')">Zrušit</button>
+                    <button type="submit" class="btn">OK</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
-        // CSRF token pro POST požadavky
-        function getCookie(name) {
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-
-        const csrftoken = getCookie('csrftoken');
-
-        // Globální stav
-        let selectedItem = null;
-        let draggedItem = null;
-        let offsetX = 0;
-        let offsetY = 0;
-        let windows = {};
+        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
         let files = [];
         let folders = [];
+        let windows = {};
+        let draggedItem = null;
+        let selectedItem = null;
+        let offsetX = 0;
+        let offsetY = 0;
 
-        // Inicializace
         document.addEventListener('DOMContentLoaded', () => {
             loadDesktopItems();
             setupEventListeners();
@@ -482,7 +484,11 @@
             });
 
             document.addEventListener('click', (e) => {
-                if (!e.target.closest('.context-menu')) {
+                const menu = document.getElementById('contextMenu');
+                const isClickOnMenu = menu.contains(e.target);
+                const isMenuVisible = !menu.classList.contains('hidden');
+                
+                if (isMenuVisible && !isClickOnMenu) {
                     hideContextMenu();
                 }
             });
@@ -585,7 +591,15 @@
                 element.classList.remove('dragging');
                 const newX = parseInt(element.style.left);
                 const newY = parseInt(element.style.top);
-                updateFolderPosition(folder.id, newX, newY);
+                
+                // Detekovat kolizi s jinými složkami/soubory
+                const targetItem = detectCollision(element, newX, newY);
+                
+                if (targetItem) {
+                    handleFolderCollision(folder, targetItem);
+                } else {
+                    updateFolderPosition(folder.id, newX, newY);
+                }
 
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
@@ -594,6 +608,46 @@
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
+        }
+
+        async function handleFolderCollision(draggedFolder, targetElement) {
+            const targetFileId = targetElement.dataset.fileId;
+            const targetFolderId = targetElement.dataset.folderId;
+
+            if (targetFolderId) {
+                // Dvě složky se střetly - přesunout draženou složku do cílové
+                const targetFolder = folders.find(f => f.id == targetFolderId);
+                if (targetFolder && targetFolder.id !== draggedFolder.id) {
+                    await moveFolderToFolder(draggedFolder.id, targetFolder.id);
+                }
+            } else if (targetFileId) {
+                // Složka se přesunula na soubor - přesunout soubor do složky
+                await moveFileToFolder(targetFileId, draggedFolder.id);
+            }
+        }
+
+        async function createFolderFromFolders(folder1, folder2) {
+            try {
+                // Vytvořit novou složku
+                const response = await fetch('/api/api/folders/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        name: `Složka_${new Date().getTime()}`,
+                        x_position: folder1.x_position,
+                        y_position: folder1.y_position
+                    })
+                });
+                
+                if (response.ok) {
+                    loadDesktopItems();
+                }
+            } catch (error) {
+                console.error('Chyba při vytváření složky:', error);
+            }
         }
 
         async function updateFolderPosition(folderId, x, y) {
@@ -606,6 +660,13 @@
                     },
                     body: JSON.stringify({ x_position: x, y_position: y })
                 });
+                
+                // Aktualizuj lokální array bez reload
+                const folder = folders.find(f => f.id === folderId);
+                if (folder) {
+                    folder.x_position = x;
+                    folder.y_position = y;
+                }
             } catch (error) {
                 console.error('Chyba při aktualizaci pozice složky:', error);
             }
@@ -667,7 +728,7 @@
         function startDrag(e, file, element) {
             if (e.button !== 0) return;
 
-            draggedItem = { file, element };
+            draggedItem = { file, element, type: 'file' };
             const rect = element.getBoundingClientRect();
             offsetX = e.clientX - rect.left;
             offsetY = e.clientY - rect.top;
@@ -683,7 +744,15 @@
                 element.classList.remove('dragging');
                 const newX = parseInt(element.style.left);
                 const newY = parseInt(element.style.top);
-                updateFilePosition(file.id, newX, newY);
+                
+                // Detekovat kolizi s jinými položkami
+                const targetItem = detectCollision(element, newX, newY);
+                
+                if (targetItem) {
+                    handleItemCollision(file, targetItem);
+                } else {
+                    updateFilePosition(file.id, newX, newY);
+                }
 
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
@@ -692,6 +761,139 @@
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function detectCollision(draggedElement, x, y) {
+            const draggedRect = {
+                left: x,
+                top: y,
+                right: x + draggedElement.offsetWidth,
+                bottom: y + draggedElement.offsetHeight
+            };
+
+            const icons = document.querySelectorAll('.desktop-icon');
+            for (let icon of icons) {
+                if (icon === draggedElement) continue;
+                
+                const iconRect = {
+                    left: parseInt(icon.style.left),
+                    top: parseInt(icon.style.top),
+                    right: parseInt(icon.style.left) + icon.offsetWidth,
+                    bottom: parseInt(icon.style.top) + icon.offsetHeight
+                };
+
+                // Kontrola, zda se obdélníky překrývají
+                if (draggedRect.left < iconRect.right &&
+                    draggedRect.right > iconRect.left &&
+                    draggedRect.top < iconRect.bottom &&
+                    draggedRect.bottom > iconRect.top) {
+                    return icon;
+                }
+            }
+            return null;
+        }
+
+        async function handleItemCollision(draggedFile, targetElement) {
+            const targetFileId = targetElement.dataset.fileId;
+            const targetFolderId = targetElement.dataset.folderId;
+
+            if (targetFolderId) {
+                // Soubor se přesunuje na složku - vložit do složky
+                await moveFileToFolder(draggedFile.id, targetFolderId);
+            } else if (targetFileId) {
+                // Dva soubory se střetly - vytvořit novou složku
+                const targetFile = files.find(f => f.id == targetFileId);
+                if (targetFile) {
+                    await createFolderFromFiles(draggedFile, targetFile);
+                }
+            }
+        }
+
+        async function moveFileToFolder(fileId, folderId) {
+            try {
+                await fetch(`/api/api/files/${fileId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ folder: folderId })
+                });
+                // Znovu načíst desktop
+                loadDesktopItems();
+            } catch (error) {
+                console.error('Chyba při přesunu do složky:', error);
+            }
+        }
+
+        async function moveFolderToFolder(folderId, parentFolderId) {
+            try {
+                await fetch(`/api/api/folders/${folderId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ parent: parentFolderId })
+                });
+                loadDesktopItems();
+            } catch (error) {
+                console.error('Chyba při přesunu složky:', error);
+            }
+        }
+
+        async function createFolderFromFiles(file1, file2) {
+            // Uložit data pro pozdější vytvoření složky
+            window.pendingFiles = [file1.id, file2.id];
+            window.pendingFolderPosition = {
+                x_position: file1.x_position,
+                y_position: file1.y_position
+            };
+            
+            // Otevřít dialog pro pojmenování
+            document.getElementById('folderNameInput').value = '';
+            document.getElementById('folderNameDialog').classList.add('active');
+        }
+
+        async function confirmNewFolderName(event) {
+            event.preventDefault();
+            const folderName = document.getElementById('folderNameInput').value.trim();
+            
+            if (!folderName) {
+                alert('Prosím, zadejte název složky');
+                return;
+            }
+
+            closeDialog('folderNameDialog');
+
+            try {
+                // Vytvořit novou složku s uživatelem zadaným názvem
+                const response = await fetch('/api/api/folders/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        name: folderName,
+                        x_position: window.pendingFolderPosition.x_position,
+                        y_position: window.pendingFolderPosition.y_position
+                    })
+                });
+                
+                if (response.ok) {
+                    const newFolder = await response.json();
+                    
+                    // Přesunout oba soubory do nové složky
+                    for (let fileId of window.pendingFiles) {
+                        await moveFileToFolder(fileId, newFolder.id);
+                    }
+                    
+                    loadDesktopItems();
+                }
+            } catch (error) {
+                console.error('Chyba při vytváření složky:', error);
+            }
         }
 
         async function updateFilePosition(fileId, x, y) {
@@ -704,6 +906,13 @@
                     },
                     body: JSON.stringify({ x_position: x, y_position: y })
                 });
+                
+                // Aktualizuj lokální array bez reload
+                const file = files.find(f => f.id === fileId);
+                if (file) {
+                    file.x_position = x;
+                    file.y_position = y;
+                }
             } catch (error) {
                 console.error('Chyba při aktualizaci pozice:', error);
             }
@@ -749,6 +958,7 @@
             document.body.appendChild(window);
             makeWindowDraggable(window);
             makeWindowResizable(window);
+            addToTaskbar(windowId);
 
             // Načte obsah složky
             loadFolderContent(folder.id);
@@ -771,10 +981,15 @@
                     
                     data.folders.forEach(folder => {
                         html += `
-                            <div style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                            <div class="folder-item" 
+                                 style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                                 data-item-id="${folder.id}"
+                                 data-item-name="${folder.name}"
+                                 data-item-type="folder"
+                                 data-item-parent="${folder.parent}"
                                  onmouseover="this.style.background='rgba(102,126,234,0.1)'" 
                                  onmouseout="this.style.background='transparent'"
-                                 onclick="openFolder({id: ${folder.id}, name: '${folder.name}', x_position: ${folder.x_position}, y_position: ${folder.y_position}})">
+                                 ondblclick="openFolder({id: ${folder.id}, name: '${folder.name}', x_position: ${folder.x_position}, y_position: ${folder.y_position}, parent: ${folder.parent}})">
                                 <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #FFA726, #FB8C00); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-bottom: 8px;">📁</div>
                                 <div style="font-size: 11px; text-align: center; word-wrap: break-word; width: 100%;">${folder.name}</div>
                             </div>
@@ -791,11 +1006,18 @@
                             'archive': '📦',
                             'other': '📁'
                         };
+                        const safeFileName = file.name.replace(/'/g, "\\'");
+                        const safeContent = (file.content || '').replace(/'/g, "\\'");
                         html += `
-                            <div style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                            <div class="file-item"
+                                 style="display: flex; flex-direction: column; align-items: center; padding: 10px; cursor: pointer; border-radius: 4px; transition: background 0.2s;" 
+                                 data-item-id="${file.id}"
+                                 data-item-name="${file.name}"
+                                 data-item-type="file"
+                                 data-item-folder="${file.folder}"
                                  onmouseover="this.style.background='rgba(102,126,234,0.1)'" 
                                  onmouseout="this.style.background='transparent'"
-                                 ondblclick="openFile({id: ${file.id}, name: '${file.name}', file_type: '${file.file_type}', content: '${file.content || ''}', icon_color: '${file.icon_color}'})">
+                                 ondblclick="openFile({id: ${file.id}, name: '${safeFileName}', file_type: '${file.file_type}', content: '${safeContent}', icon_color: '${file.icon_color}', folder: ${file.folder}})">
                                 <div style="width: 60px; height: 60px; background: ${file.icon_color}; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 30px; margin-bottom: 8px;">${iconTypes[file.file_type] || '📁'}</div>
                                 <div style="font-size: 11px; text-align: center; word-wrap: break-word; width: 100%;">${file.name}</div>
                             </div>
@@ -804,6 +1026,20 @@
                     
                     html += '</div>';
                     contentDiv.innerHTML = html;
+                    
+                    // Přidat event listenery pro context menu na dynamicky generované prvky
+                    contentDiv.querySelectorAll('.file-item, .folder-item').forEach(item => {
+                        item.addEventListener('contextmenu', (e) => {
+                            e.preventDefault();
+                            const itemData = {
+                                id: parseInt(item.dataset.itemId),
+                                name: item.dataset.itemName,
+                                [item.dataset.itemType === 'file' ? 'folder' : 'parent']: item.dataset.itemType === 'file' ? parseInt(item.dataset.itemFolder) : parseInt(item.dataset.itemParent)
+                            };
+                            console.log('Context menu on', item.dataset.itemType, ':', itemData);
+                            showContextMenu(e.clientX, e.clientY, itemData, item.dataset.itemType);
+                        });
+                    });
                 }
             } catch (error) {
                 console.error('Chyba při načítání obsahu složky:', error);
@@ -820,6 +1056,22 @@
             window.style.height = '400px';
             window.style.zIndex = '500';
 
+            // Rozlišit mezi textovými soubory a ostatními
+            const isTextFile = file.file_type === 'text' || file.name.endsWith('.txt');
+            const contentHtml = isTextFile ? `
+                <div style="display: flex; flex-direction: column; flex: 1; overflow: hidden;">
+                    <textarea id="file-content-${file.id}" style="flex: 1; padding: 10px; font-family: monospace; border: none; resize: none; outline: none;">${file.content || ''}</textarea>
+                    <div style="padding: 10px; background: #f5f5f5; border-top: 1px solid #ddd; display: flex; gap: 10px;">
+                        <button class="btn" onclick="saveFileContent(${file.id}, '${file.name.replace(/'/g, "\\'")}')" style="flex: 1;">Uložit</button>
+                        <button class="btn" onclick="resetFileContent(${file.id})" style="flex: 1;">Zrušit</button>
+                    </div>
+                </div>
+            ` : `
+                <div class="window-content">
+                    <p>${file.content || 'Obsah souboru...'}</p>
+                </div>
+            `;
+
             window.innerHTML = `
                 <div class="window-header">
                     <div class="window-title">${file.name}</div>
@@ -829,9 +1081,7 @@
                         <button class="window-btn" onclick="closeWindow('${windowId}')">✕</button>
                     </div>
                 </div>
-                <div class="window-content">
-                    <p>${file.content || 'Obsah souboru...'}</p>
-                </div>
+                ${contentHtml}
             `;
 
             document.body.appendChild(window);
@@ -839,6 +1089,7 @@
             // Drag a resize
             makeWindowDraggable(window);
             makeWindowResizable(window);
+            addToTaskbar(windowId);
 
             windows[windowId] = file;
         }
@@ -904,15 +1155,81 @@
         }
 
         function showContextMenu(x, y, item, itemType) {
+            console.log('showContextMenu called with item:', item, 'itemType:', itemType);
             selectedItem = item ? { ...item, type: itemType || 'file' } : null;
+            console.log('selectedItem nastaveno na:', selectedItem);
             const menu = document.getElementById('contextMenu');
             menu.style.left = x + 'px';
             menu.style.top = y + 'px';
             menu.classList.remove('hidden');
+            
+            // Ukázat "Vyndat ze složky" pokud je soubor ve složce nebo složka v složce
+            const extractOption = document.getElementById('extractFromFolderOption');
+            if (selectedItem) {
+                const hasFolder = (selectedItem.type === 'file' && selectedItem.folder !== null && selectedItem.folder !== undefined);
+                const hasParent = (selectedItem.type === 'folder' && selectedItem.parent !== null && selectedItem.parent !== undefined);
+                
+                if (hasFolder || hasParent) {
+                    extractOption.style.display = 'block';
+                } else {
+                    extractOption.style.display = 'none';
+                }
+            } else {
+                extractOption.style.display = 'none';
+            }
         }
 
         function hideContextMenu() {
             document.getElementById('contextMenu').classList.add('hidden');
+        }
+
+        async function extractFromFolder() {
+            if (!selectedItem) return;
+            
+            const isFileInFolder = (selectedItem.type === 'file' && selectedItem.folder !== null && selectedItem.folder !== undefined);
+            const isFolderInFolder = (selectedItem.type === 'folder' && selectedItem.parent !== null && selectedItem.parent !== undefined);
+            
+            if (!isFileInFolder && !isFolderInFolder) return;
+            
+            try {
+                const parentFolderId = selectedItem.type === 'file' ? selectedItem.folder : selectedItem.parent;
+                
+                if (selectedItem.type === 'file') {
+                    // Vyndat soubor ze složky
+                    await fetch(`/api/api/files/${selectedItem.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ folder: null })
+                    });
+                } else if (selectedItem.type === 'folder') {
+                    // Vyndat složku ze složky (nastavit parent na null)
+                    await fetch(`/api/api/folders/${selectedItem.id}/`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ parent: null })
+                    });
+                }
+                
+                // Reload desktop items
+                loadDesktopItems();
+                
+                // Reload folder window obsah pokud existuje
+                if (parentFolderId && document.getElementById(`folder-content-${parentFolderId}`)) {
+                    loadFolderContent(parentFolderId);
+                }
+                
+                hideContextMenu();
+                selectedItem = null;
+            } catch (error) {
+                console.error('Chyba při vynětí ze složky:', error);
+                alert('Chyba: ' + error.message);
+            }
         }
 
         function createNewFile() {
@@ -924,37 +1241,57 @@
         }
 
         function renameItem() {
+            console.log('renameItem called, selectedItem:', selectedItem);
             if (selectedItem) {
                 document.getElementById('renameInput').value = selectedItem.name;
                 document.getElementById('renameDialog').classList.add('active');
+            } else {
+                console.log('selectedItem je prázdný!');
             }
         }
 
         async function deleteItem() {
+            console.log('deleteItem called, selectedItem:', selectedItem);
             if (selectedItem && confirm('Opravdu chcete smazat tuto položku?')) {
                 try {
                     const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
-                    await fetch(`/api/${endpoint}/${selectedItem.id}/`, {
+                    await fetch(`/api/api/${endpoint}/${selectedItem.id}/`, {
                         method: 'DELETE',
                         headers: {
                             'X-CSRFToken': csrftoken
                         }
                     });
                     loadDesktopItems();
+                    
+                    // Reload folder windows pokud je soubor/složka ve složce
+                    if (selectedItem.type === 'file' && selectedItem.folder) {
+                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.folder}`);
+                        if (folderContentDiv) {
+                            loadFolderContent(selectedItem.folder);
+                        }
+                    } else if (selectedItem.type === 'folder' && selectedItem.parent) {
+                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.parent}`);
+                        if (folderContentDiv) {
+                            loadFolderContent(selectedItem.parent);
+                        }
+                    }
+                    
                     selectedItem = null;
                 } catch (error) {
                     console.error('Chyba při mazání:', error);
                 }
+            } else {
+                console.log('Zrušeno nebo selectedItem prázdný');
             }
         }
 
         function propertiesItem() {
             if (selectedItem) {
-                const created = new Date(selectedItem.created_at).toLocaleString('cs-CZ');
+                const created = selectedItem.created_at ? new Date(selectedItem.created_at).toLocaleString('cs-CZ') : 'Neznámo';
                 if (selectedItem.type === 'folder') {
                     alert(`Vlastnosti složky:\nNázev: ${selectedItem.name}\nVytvořeno: ${created}`);
                 } else {
-                    alert(`Vlastnosti souboru:\nNázev: ${selectedItem.name}\nTyp: ${selectedItem.file_type}\nVelikost: ${selectedItem.file_size || 0} B\nVytvořeno: ${created}`);
+                    alert(`Vlastnosti souboru:\nNázev: ${selectedItem.name}\nTyp: ${selectedItem.file_type || 'Neznámý'}\nVelikost: ${selectedItem.file_size || 0} B\nVytvořeno: ${created}`);
                 }
             }
         }
@@ -966,12 +1303,12 @@
                 try {
                     const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
                     const url = selectedItem.type === 'folder' 
-                        ? `/api/${endpoint}/${selectedItem.id}/`
-                        : `/api/${endpoint}/${selectedItem.id}/rename/`;
+                        ? `/api/api/folders/${selectedItem.id}/`
+                        : `/api/api/files/${selectedItem.id}/rename/`;
                     
                     const method = selectedItem.type === 'folder' ? 'PATCH' : 'POST';
                     
-                    await fetch(url, {
+                    const response = await fetch(url, {
                         method: method,
                         headers: {
                             'Content-Type': 'application/json',
@@ -979,12 +1316,98 @@
                         },
                         body: JSON.stringify({ name: newName })
                     });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        console.error('API chyba:', error);
+                        alert('Chyba: ' + JSON.stringify(error));
+                        return;
+                    }
+                    
                     loadDesktopItems();
+                    
+                    // Reload folder windows pokud je soubor ve složce
+                    if (selectedItem.type === 'file' && selectedItem.folder) {
+                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.folder}`);
+                        if (folderContentDiv) {
+                            loadFolderContent(selectedItem.folder);
+                        }
+                    } else if (selectedItem.type === 'folder' && selectedItem.parent) {
+                        // Reload parent folder window
+                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.parent}`);
+                        if (folderContentDiv) {
+                            loadFolderContent(selectedItem.parent);
+                        }
+                    }
+                    
                     closeDialog('renameDialog');
                     selectedItem = null;
                 } catch (error) {
                     console.error('Chyba při přejmenování:', error);
+                    alert('Chyba: ' + error.message);
                 }
+            }
+        }
+
+        async function saveFileContent(fileId, fileName) {
+            const textarea = document.getElementById(`file-content-${fileId}`);
+            if (!textarea) {
+                alert('Textarea nenalezena');
+                return;
+            }
+
+            const content = textarea.value;
+            
+            try {
+                const response = await fetch(`/api/api/files/${fileId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        content: content
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    console.error('API chyba:', error);
+                    alert('Chyba při ukládání: ' + JSON.stringify(error));
+                    return;
+                }
+
+                const updatedFile = await response.json();
+                
+                // Aktualizuj soubor v paměti
+                if (windows[`window-file-${fileId}`]) {
+                    windows[`window-file-${fileId}`].content = content;
+                }
+
+                // Aktualizuj seznam souborů
+                const fileIndex = files.findIndex(f => f.id === fileId);
+                if (fileIndex !== -1) {
+                    files[fileIndex].content = content;
+                }
+
+                alert('Soubor uložen úspěšně');
+                
+            } catch (error) {
+                console.error('Chyba:', error);
+                alert('Chyba při ukládání: ' + error.message);
+            }
+        }
+
+        async function resetFileContent(fileId) {
+            const textarea = document.getElementById(`file-content-${fileId}`);
+            if (!textarea) {
+                alert('Textarea nenalezena');
+                return;
+            }
+
+            // Resetuj na původní obsah z paměti
+            if (windows[`window-file-${fileId}`]) {
+                textarea.value = windows[`window-file-${fileId}`].content || '';
             }
         }
 
@@ -998,7 +1421,7 @@
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
                     
-                    await fetch('/api/api/files/', {
+                    const response = await fetch('/api/api/files/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1011,12 +1434,20 @@
                             y_position: y
                         })
                     });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        console.error('API chyba:', error);
+                        alert('Chyba: ' + JSON.stringify(error));
+                        return;
+                    }
+                    
                     loadDesktopItems();
                     closeDialog('newFileDialog');
                     document.getElementById('newFileInput').value = '';
                 } catch (error) {
                     console.error('Chyba při vytváření souboru:', error);
-                    alert('Chyba: Soubor s tímto názvem již existuje nebo nastala jiná chyba.');
+                    alert('Chyba: ' + error.message);
                 }
             }
         }
@@ -1030,7 +1461,7 @@
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
                     
-                    await fetch('/api/api/folders/', {
+                    const response = await fetch('/api/api/folders/', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1042,12 +1473,20 @@
                             y_position: y
                         })
                     });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        console.error('API chyba:', error);
+                        alert('Chyba: ' + JSON.stringify(error));
+                        return;
+                    }
+                    
                     loadDesktopItems();
                     closeDialog('newFolderDialog');
                     document.getElementById('newFolderInput').value = '';
                 } catch (error) {
                     console.error('Chyba při vytváření složky:', error);
-                    alert('Chyba: Složka s tímto názvem již existuje nebo nastala jiná chyba.');
+                    alert('Chyba: ' + error.message);
                 }
             }
         }
@@ -1058,6 +1497,50 @@
 
         function minimizeWindow(windowId) {
             document.getElementById(windowId).classList.add('minimized');
+            addToTaskbar(windowId);
+        }
+
+        function addToTaskbar(windowId) {
+            const window = document.getElementById(windowId);
+            if (!window) return;
+            
+            const taskbarWindows = document.getElementById('taskbar-windows');
+            
+            // Zkontrolovat jestli je už v taskbaru
+            if (document.getElementById('taskbar-' + windowId)) {
+                return;
+            }
+            
+            // Získat název z window title
+            const titleEl = window.querySelector('.window-title');
+            const title = titleEl ? titleEl.textContent : 'Okno';
+            
+            // Vytvořit taskbar item
+            const taskbarItem = document.createElement('div');
+            taskbarItem.className = 'taskbar-item';
+            taskbarItem.id = 'taskbar-' + windowId;
+            taskbarItem.textContent = title;
+            taskbarItem.onclick = () => {
+                const w = document.getElementById(windowId);
+                if (w.classList.contains('minimized')) {
+                    w.classList.remove('minimized');
+                    taskbarItem.classList.remove('active');
+                } else {
+                    w.classList.add('minimized');
+                    taskbarItem.classList.add('active');
+                }
+            };
+            
+            // Když je okno otevřeno, označit taskbar item
+            taskbarItem.classList.add('active');
+            taskbarWindows.appendChild(taskbarItem);
+        }
+
+        function removeFromTaskbar(windowId) {
+            const taskbarItem = document.getElementById('taskbar-' + windowId);
+            if (taskbarItem) {
+                taskbarItem.remove();
+            }
         }
 
         function maximizeWindow(windowId) {
@@ -1076,6 +1559,7 @@
         }
 
         function closeWindow(windowId) {
+            removeFromTaskbar(windowId);
             document.getElementById(windowId).remove();
             delete windows[windowId];
         }
