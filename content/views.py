@@ -12,6 +12,122 @@ from .models import DesktopFile, DesktopFolder, DesktopWindow, Message, MessageA
 from .serializers import DesktopFileSerializer, DesktopFolderSerializer, DesktopWindowSerializer, MessageSerializer
 
 
+# ===== HELPER FUNCTIONS =====
+def get_unique_name(name, user, folder=None, item_type='file'):
+    """Vygeneruje unikátní název souboru/složky v zadané poloze"""
+    if item_type == 'file':
+        # Nejdříve kontrola zda soubor se STEJNÝM jménem existuje
+        existing = DesktopFile.objects.filter(user=user, folder=folder, name=name).exists()
+        if not existing:
+            return name
+        
+        # Najít dostupné číslo
+        base_name = name.rsplit('.', 1)[0] if '.' in name else name
+        ext = '.' + name.rsplit('.', 1)[1] if '.' in name else ''
+        counter = 1
+        while True:
+            new_name = f"{base_name} ({counter}){ext}"
+            if not DesktopFile.objects.filter(user=user, folder=folder, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    elif item_type == 'folder':
+        # Nejdříve kontrola zda složka se STEJNÝM jménem existuje
+        existing = DesktopFolder.objects.filter(user=user, parent=folder, name=name).exists()
+        if not existing:
+            return name
+        
+        # Najít dostupné číslo
+        counter = 1
+        while True:
+            new_name = f"{name} ({counter})"
+            if not DesktopFolder.objects.filter(user=user, parent=folder, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    return name
+
+
+def get_unique_name_with_base_check(name, user, item_type='file'):
+    """Vygeneruje unikátní název se kontrolou na kolize ZÁKLADNÍHO jména na celém desktopu"""
+    if item_type == 'file':
+        # Extrahovat základní jméno
+        base_name = name.rsplit('.', 1)[0] if '.' in name else name
+        ext = '.' + name.rsplit('.', 1)[1] if '.' in name else ''
+        
+        # Najít všechny soubory na desktopu (bez složky) se stejným základem
+        existing_files = DesktopFile.objects.filter(
+            user=user, 
+            folder__isnull=True,
+            name__startswith=base_name
+        )
+        
+        # Pokud se původní jméno nepoužívá, vrátit ho
+        if not DesktopFile.objects.filter(user=user, folder__isnull=True, name=name).exists():
+            # Ale zkontrolovat aby se necollidovalo s existujícím základem
+            if not existing_files.exists():
+                return name
+        
+        # Najít dostupné číslo
+        counter = 1
+        while True:
+            new_name = f"{base_name} ({counter}){ext}"
+            if not DesktopFile.objects.filter(user=user, folder__isnull=True, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    elif item_type == 'folder':
+        # Kontoluje kolize na desktopu (bez rodičovské složky)
+        existing = DesktopFolder.objects.filter(user=user, parent__isnull=True, name=name).exists()
+        if not existing:
+            return name
+        
+        # Najít dostupné číslo
+        counter = 1
+        while True:
+            new_name = f"{name} ({counter})"
+            if not DesktopFolder.objects.filter(user=user, parent__isnull=True, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    return name
+
+
+def get_unique_name_global(name, user, item_type='file'):
+    """Vygeneruje unikátní název se kontrolou na kolize VŠECH souborů/složek uživatele (globální kontrola)"""
+    if item_type == 'file':
+        # Extrahovat základní jméno
+        base_name = name.rsplit('.', 1)[0] if '.' in name else name
+        ext = '.' + name.rsplit('.', 1)[1] if '.' in name else ''
+        
+        # Kontrola zda se již používá přesně toto jméno KDEKOLI
+        if not DesktopFile.objects.filter(user=user, name=name).exists():
+            return name
+        
+        # Najít dostupné číslo - kontrola proti VŠEM souborům uživatele
+        counter = 1
+        while True:
+            new_name = f"{base_name} ({counter}){ext}"
+            if not DesktopFile.objects.filter(user=user, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    elif item_type == 'folder':
+        # Kontrola zda se již používá přesně toto jméno KDEKOLI
+        if not DesktopFolder.objects.filter(user=user, name=name).exists():
+            return name
+        
+        # Najít dostupné číslo - kontrola proti VŠEM složkám uživatele
+        counter = 1
+        while True:
+            new_name = f"{name} ({counter})"
+            if not DesktopFolder.objects.filter(user=user, name=new_name).exists():
+                return new_name
+            counter += 1
+    
+    return name
+
+
 # ===== AUTHENTICATION VIEWS =====
 def login_view(request):
     """Přihlášení uživatele"""
@@ -365,10 +481,18 @@ class MessageViewSet(viewsets.ModelViewSet):
             if attachment_type == 'file':
                 try:
                     original_file = DesktopFile.objects.get(id=attachment_id)
+                    # Přidat informaci od koho přišel soubor
+                    file_name = original_file.name
+                    base_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
+                    ext = '.' + file_name.rsplit('.', 1)[1] if '.' in file_name else ''
+                    name_with_sender = f"{base_name} (od {message.sender.username}){ext}"
+                    
+                    # Vygenerovat unikátní název se kontrolou na desktopu
+                    unique_name = get_unique_name_with_base_check(name_with_sender, request.user, item_type='file')
                     # Vytvořit kopii pro aktuálního uživatele
                     new_file = DesktopFile.objects.create(
                         user=request.user,
-                        name=f"{original_file.name} (od {message.sender.username})",
+                        name=unique_name,
                         file_type=original_file.file_type,
                         content=original_file.content,
                         file_size=original_file.file_size,
@@ -386,10 +510,14 @@ class MessageViewSet(viewsets.ModelViewSet):
             elif attachment_type == 'folder':
                 try:
                     original_folder = DesktopFolder.objects.get(id=attachment_id)
+                    # Přidat informaci od koho přišla složka
+                    folder_name_with_sender = f"{original_folder.name} (od {message.sender.username})"
+                    # Vygenerovat unikátní název se kontrolou na desktopu
+                    unique_name = get_unique_name_with_base_check(folder_name_with_sender, request.user, item_type='folder')
                     # Vytvořit kopii pro aktuálního uživatele
                     new_folder = DesktopFolder.objects.create(
                         user=request.user,
-                        name=f"{original_folder.name} (od {message.sender.username})",
+                        name=unique_name,
                         x_position=x_pos,
                         y_position=y_pos
                     )
@@ -397,10 +525,12 @@ class MessageViewSet(viewsets.ModelViewSet):
                     # Zkopírovat všechny soubory z původní složky
                     original_files = DesktopFile.objects.filter(folder=original_folder)
                     for original_file in original_files:
+                        # GLOBÁLNÍ kontrola kolizí - kontroluje proti VŠEM souborům na desktopu a ve všech složkách
+                        unique_file_name = get_unique_name_global(original_file.name, request.user, item_type='file')
                         DesktopFile.objects.create(
                             user=request.user,
                             folder=new_folder,
-                            name=original_file.name,
+                            name=unique_file_name,
                             file_type=original_file.file_type,
                             content=original_file.content,
                             file_size=original_file.file_size,
