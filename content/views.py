@@ -8,8 +8,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from .models import DesktopFile, DesktopFolder, DesktopWindow
-from .serializers import DesktopFileSerializer, DesktopFolderSerializer, DesktopWindowSerializer
+from .models import DesktopFile, DesktopFolder, DesktopWindow, Message, MessageAttachment
+from .serializers import DesktopFileSerializer, DesktopFolderSerializer, DesktopWindowSerializer, MessageSerializer
 
 
 # ===== AUTHENTICATION VIEWS =====
@@ -144,6 +144,13 @@ class DesktopFileViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(files, many=True)
         return Response(serializer.data)
     
+    @action(detail=False, methods=['get'])
+    def all_files(self, request):
+        """Vrací VŠECHNY soubory uživatele (včetně těch ve složkách) - pro attachment selector"""
+        files = DesktopFile.objects.filter(user=request.user)
+        serializer = self.get_serializer(files, many=True)
+        return Response(serializer.data)
+    
     @action(detail=True, methods=['post'])
     def rename(self, request, pk=None):
         """Přejmenuje soubor"""
@@ -218,3 +225,198 @@ class DesktopWindowViewSet(viewsets.ModelViewSet):
             return Response(serializer.data)
         except DesktopWindow.DoesNotExist:
             return Response({'error': 'Window not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Vrací zprávy poslane nebo přijaté aktuálním uživatelem
+        user = self.request.user
+        return Message.objects.filter(
+            models.Q(sender=user) | models.Q(recipients=user)
+        ).prefetch_related('attachments', 'attachments__file', 'attachments__folder').distinct().order_by('-created_at')
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Vrací jednu zprávu s přílohami"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+    
+    def create(self, request, *args, **kwargs):
+        """Vytvoří novou zprávu"""
+        try:
+            recipients_usernames = request.data.get('recipients', [])
+            subject = request.data.get('subject')
+            body = request.data.get('body')
+            attachments_data = request.data.get('attachments', [])
+            
+            print(f"DEBUG: Creating message with attachments_data: {attachments_data}")
+            
+            if not recipients_usernames or not subject or not body:
+                return Response(
+                    {'error': 'Recipients, subject and body are required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Převedeme uživatelská jména na User objekty
+            recipients = []
+            for username in recipients_usernames:
+                try:
+                    user = User.objects.get(username=username.strip())
+                    recipients.append(user)
+                except User.DoesNotExist:
+                    return Response(
+                        {'error': f'User {username} not found'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+            
+            # Vytvoříme zprávu
+            message = Message.objects.create(
+                sender=request.user,
+                subject=subject,
+                body=body
+            )
+            message.recipients.set(recipients)
+            
+            # Přidáme přílohy
+            print(f"DEBUG: Processing {len(attachments_data)} attachments")
+            for attachment_data in attachments_data:
+                attachment_type = attachment_data.get('type')
+                attachment_id = attachment_data.get('id')
+                
+                print(f"DEBUG: Processing attachment - type: {attachment_type}, id: {attachment_id}")
+                
+                if attachment_type == 'file' and attachment_id:
+                    try:
+                        file = DesktopFile.objects.get(id=attachment_id, user=request.user)
+                        att = MessageAttachment.objects.create(message=message, file=file)
+                        print(f"DEBUG: Created attachment {att.id} for file {file.id}")
+                    except DesktopFile.DoesNotExist:
+                        print(f"DEBUG: File not found: {attachment_id}")
+                        pass
+                elif attachment_type == 'folder' and attachment_id:
+                    try:
+                        folder = DesktopFolder.objects.get(id=attachment_id, user=request.user)
+                        att = MessageAttachment.objects.create(message=message, folder=folder)
+                        print(f"DEBUG: Created attachment {att.id} for folder {folder.id}")
+                    except DesktopFolder.DoesNotExist:
+                        print(f"DEBUG: Folder not found: {attachment_id}")
+                        pass
+            
+            # Přenačti zprávu s attachments
+            message = Message.objects.prefetch_related('attachments', 'attachments__file', 'attachments__folder').get(id=message.id)
+            print(f"DEBUG: Final message has {message.attachments.count()} attachments")
+            serializer = self.get_serializer(message)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def inbox(self, request):
+        """Vrací přijaté zprávy"""
+        messages = self.get_queryset().filter(recipients=request.user)
+        serializer = self.get_serializer(messages, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def sent(self, request):
+        """Vrací poslane zprávy"""
+        messages = self.get_queryset().filter(sender=request.user)
+        serializer = self.get_serializer(messages, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def mark_as_read(self, request, pk=None):
+        """Označí zprávu jako přečtenou"""
+        try:
+            message = Message.objects.get(id=pk, recipients=request.user)
+            message.is_read = True
+            message.save()
+            serializer = self.get_serializer(message)
+            return Response(serializer.data)
+        except Message.DoesNotExist:
+            return Response({'error': 'Message not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    @action(detail=True, methods=['post'])
+    def copy_attachment(self, request, pk=None):
+        """Kopíruje attachment do desktopového prostředí aktuálního uživatele"""
+        try:
+            print(f"DEBUG copy_attachment: pk={pk}, request.data={request.data}")
+            
+            message = Message.objects.get(id=pk)
+            # Zkontrolovat že si zprávu může přečíst
+            if message.sender != request.user and request.user not in message.recipients.all():
+                return Response({'error': 'Nemáte přístup k této zprávě'}, status=status.HTTP_403_FORBIDDEN)
+            
+            attachment_id = request.data.get('attachment_id')
+            attachment_type = request.data.get('type')  # 'file' nebo 'folder'
+            x_pos = request.data.get('x_position', 0)
+            y_pos = request.data.get('y_position', 0)
+            
+            print(f"DEBUG: attachment_id={attachment_id}, attachment_type={attachment_type}")
+            
+            if not attachment_id or not attachment_type:
+                print(f"DEBUG: Chybí attachment_id nebo type")
+                return Response({'error': 'Chybí attachment_id nebo type'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if attachment_type == 'file':
+                try:
+                    original_file = DesktopFile.objects.get(id=attachment_id)
+                    # Vytvořit kopii pro aktuálního uživatele
+                    new_file = DesktopFile.objects.create(
+                        user=request.user,
+                        name=f"{original_file.name} (od {message.sender.username})",
+                        file_type=original_file.file_type,
+                        content=original_file.content,
+                        file_size=original_file.file_size,
+                        x_position=x_pos,
+                        y_position=y_pos,
+                        icon_color=original_file.icon_color
+                    )
+                    return Response({
+                        'success': True,
+                        'file': DesktopFileSerializer(new_file).data
+                    })
+                except DesktopFile.DoesNotExist:
+                    return Response({'error': 'Soubor nebyl nalezen'}, status=status.HTTP_404_NOT_FOUND)
+            
+            elif attachment_type == 'folder':
+                try:
+                    original_folder = DesktopFolder.objects.get(id=attachment_id)
+                    # Vytvořit kopii pro aktuálního uživatele
+                    new_folder = DesktopFolder.objects.create(
+                        user=request.user,
+                        name=f"{original_folder.name} (od {message.sender.username})",
+                        x_position=x_pos,
+                        y_position=y_pos
+                    )
+                    
+                    # Zkopírovat všechny soubory z původní složky
+                    original_files = DesktopFile.objects.filter(folder=original_folder)
+                    for original_file in original_files:
+                        DesktopFile.objects.create(
+                            user=request.user,
+                            folder=new_folder,
+                            name=original_file.name,
+                            file_type=original_file.file_type,
+                            content=original_file.content,
+                            file_size=original_file.file_size,
+                            icon_color=original_file.icon_color
+                        )
+                    
+                    return Response({
+                        'success': True,
+                        'folder': DesktopFolderSerializer(new_folder).data
+                    })
+                except DesktopFolder.DoesNotExist:
+                    return Response({'error': 'Složka nebyla nalezena'}, status=status.HTTP_404_NOT_FOUND)
+            
+            return Response({'error': 'Neznámý typ attachmentu'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        except Message.DoesNotExist:
+            return Response({'error': 'Zpráva nebyla nalezena'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

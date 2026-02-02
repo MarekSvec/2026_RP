@@ -98,6 +98,29 @@ class Era(models.Model):
         return self.name
 
 
+class Message(models.Model):
+    """Flux Mail - zprávy mezi uživateli"""
+    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_messages')
+    recipients = models.ManyToManyField(User, related_name='received_messages')
+    subject = models.CharField(max_length=255)
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f"{self.sender.username} -> {self.subject}"
+
+
+class MessageAttachment(models.Model):
+    """Přílohy k zprávám"""
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='attachments')
+    file = models.ForeignKey(DesktopFile, on_delete=models.CASCADE, null=True, blank=True)
+    folder = models.ForeignKey(DesktopFolder, on_delete=models.CASCADE, null=True, blank=True)
+    
+    def __str__(self):
+        return f"Attachment to {self.message.id}"
+
+
 class Article(models.Model):
     title = models.CharField(max_length=100)
     year = models.IntegerField()

@@ -8,6 +8,7 @@ router = DefaultRouter()
 router.register(r'api/folders', content.views.DesktopFolderViewSet, basename='folder')
 router.register(r'api/files', content.views.DesktopFileViewSet, basename='file')
 router.register(r'api/windows', content.views.DesktopWindowViewSet, basename='window')
+router.register(r'api/messages', content.views.MessageViewSet, basename='message')
 
 urlpatterns = [
     path('admin/', admin.site.urls),

@@ -77,7 +77,7 @@
 
         .btn {
             padding: 8px 16px;
-            background: rgba(102, 126, 234, 0.8);
+            background: #764ba2;
             color: white;
             border: none;
             border-radius: 4px;
@@ -87,7 +87,7 @@
         }
 
         .btn:hover {
-            background: rgba(102, 126, 234, 1);
+            background: #5a3680;
         }
 
         .desktop-icon {
@@ -364,6 +364,8 @@
             <!-- Otevřená okna se budou přidávat sem -->
         </div>
         <div class="button-group">
+            <button class="btn" onclick="openMailingWindow()">✉️ Flux</button>
+            <button class="btn" onclick="openReceivedMessagesWindow()" style="position: relative;">📬 Doručené Fluxy <span id="unreadBadge" style="position: absolute; top: 5px; right: 5px; background: #e74c3c; color: white; border-radius: 50%; width: 20px; height: 20px; display: none; font-size: 12px; align-items: center; justify-content: center;"></span></button>
             <button class="btn" onclick="createNewFile()">📝 Notepad</button>
             <button class="btn" onclick="createNewFolder()">+ Nová složka</button>
             <button class="btn" onclick="logout()">Odhlásit se</button>
@@ -443,17 +445,193 @@
         </div>
     </div>
 
+    <!-- Custom Confirmation Dialog -->
+    <div class="dialog" id="confirmDialog">
+        <div class="dialog-content">
+            <div class="dialog-title" id="confirmTitle">Potvrzení</div>
+            <p id="confirmMessage" style="margin-bottom: 20px; color: #666;"></p>
+            <div class="form-buttons">
+                <button type="button" class="btn" onclick="cancelConfirm()" style="background: #999;">Zrušit</button>
+                <button type="button" class="btn" onclick="confirmAction()" style="background: #764ba2;">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Send Mail Confirmation Dialog -->
+    <div class="dialog" id="sendMailConfirmDialog">
+        <div class="dialog-content">
+            <div class="dialog-title">Odeslat zprávu?</div>
+            <p id="sendMailConfirmMessage" style="margin-bottom: 20px; color: #666;"></p>
+            <div class="form-buttons">
+                <button type="button" class="btn" onclick="closeSendMailConfirm()" style="background: #999;">Zrušit</button>
+                <button type="button" class="btn" onclick="proceedSendMail()" style="background: #764ba2;">Odeslat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mailing Window Dialog -->
+    <div class="dialog" id="mailingDialog">
+        <div class="dialog-content" style="max-width: 600px;">
+            <div class="dialog-title">✉️ Flux Mail</div>
+            <form onsubmit="sendMail(event)">
+                <div class="form-group">
+                    <label for="mailRecipients" class="form-label">Příjemci (uživatelská jména, oddělená čárkou):</label>
+                    <input type="text" id="mailRecipients" class="form-input" placeholder="uživatel1, uživatel2" required>
+                </div>
+                <div class="form-group">
+                    <label for="mailSubject" class="form-label">Předmět:</label>
+                    <input type="text" id="mailSubject" class="form-input" placeholder="Zadejte předmět" required>
+                </div>
+                <div class="form-group">
+                    <label for="mailBody" class="form-label">Zpráva:</label>
+                    <textarea id="mailBody" class="form-input" style="resize: vertical; min-height: 200px; font-family: monospace;" placeholder="Zadejte zprávu..." required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="mailAttachmentArea" class="form-label">Přílohy:</label>
+                    <button type="button" class="btn" onclick="openAttachmentSelector()" style="background: #667eea; margin-bottom: 10px;">+ Vybrat přílohu</button>
+                    <div id="mailAttachmentList" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                </div>
+                <div class="form-buttons">
+                    <button type="button" class="btn" onclick="closeDialog('mailingDialog')" style="background: #999;">Zrušit</button>
+                    <button type="submit" class="btn" style="background: #764ba2;">Poslat</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Received Messages Window -->
+    <div class="dialog" id="receivedMessagesDialog">
+        <div class="dialog-content" style="max-width: 800px; max-height: 600px; display: flex; flex-direction: column;">
+            <div class="dialog-title" style="margin-bottom: 15px;">📬 Doručené Fluxy</div>
+            <div id="messagesList" style="flex: 1; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 10px;">
+                <p style="text-align: center; color: #999;">Načítání zpráv...</p>
+            </div>
+            <div class="form-buttons" style="margin-top: 15px;">
+                <button type="button" class="btn" onclick="closeDialog('receivedMessagesDialog')" style="background: #999;">Zavřít</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attachment Selector Dialog -->
+    <div class="dialog" id="attachmentSelectorDialog">
+        <div class="dialog-content" style="max-width: 600px; max-height: 700px; display: flex; flex-direction: column;">
+            <div class="dialog-title">Vybrat přílohy</div>
+            <div style="flex: 1; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+                <div id="attachmentSelectorContent">
+                    <p style="text-align: center; color: #999;">Načítání...</p>
+                </div>
+            </div>
+            <div class="form-buttons">
+                <button type="button" class="btn" onclick="closeDialog('attachmentSelectorDialog')" style="background: #999;">Zrušit</button>
+                <button type="button" class="btn" onclick="confirmAttachmentSelection()" style="background: #764ba2;">OK</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
         let files = [];
         let folders = [];
         let windows = {};
         let draggedItem = null;
+        let currentlyDraggedForMail = null;  // Sleduje přetahovaný prvek pro mail
         let selectedItem = null;
         let windowOffset = { x: 0, y: 0 };
         const WINDOW_OFFSET = 30; // Pixely pro odsazení nových oken
         let offsetX = 0;
         let offsetY = 0;
+
+        // Custom confirmation dialog state
+        let confirmCallback = null;
+
+        function showConfirm(title, message, onConfirm) {
+            confirmCallback = onConfirm;
+            document.getElementById('confirmTitle').textContent = title;
+            document.getElementById('confirmMessage').textContent = message;
+            document.getElementById('confirmDialog').classList.add('active');
+        }
+
+        function confirmAction() {
+            document.getElementById('confirmDialog').classList.remove('active');
+            if (confirmCallback) {
+                confirmCallback(true);
+                confirmCallback = null;
+            }
+        }
+
+        function cancelConfirm() {
+            document.getElementById('confirmDialog').classList.remove('active');
+            if (confirmCallback) {
+                confirmCallback(false);
+                confirmCallback = null;
+            }
+        }
+
+        // Variables for send mail confirmation
+        let pendingMailData = null;
+
+        function showSendMailConfirm(recipientCount, attachmentCount) {
+            // Minimize the mailing dialog
+            document.getElementById('mailingDialog').classList.remove('active');
+            
+            let message = `Opravdu chceš odeslat zprávu?\n\nPříjemci: ${recipientCount}\nPřílohy: ${attachmentCount}`;
+            document.getElementById('sendMailConfirmMessage').textContent = message;
+            document.getElementById('sendMailConfirmDialog').classList.add('active');
+        }
+
+        function closeSendMailConfirm() {
+            // Restore the mailing dialog
+            document.getElementById('sendMailConfirmDialog').classList.remove('active');
+            document.getElementById('mailingDialog').classList.add('active');
+            pendingMailData = null;
+        }
+
+        async function proceedSendMail() {
+            if (!pendingMailData) return;
+            
+            const { recipients, subject, body, attachmentData } = pendingMailData;
+            
+            try {
+                const response = await fetch('/api/api/messages/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        recipients: recipients,
+                        subject: subject,
+                        body: body,
+                        attachments: attachmentData
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    showMessageDialog('Chyba', 'Chyba při odesílání: ' + JSON.stringify(error));
+                    closeSendMailConfirm();
+                    return;
+                }
+                
+                // Close both dialogs and show success message
+                document.getElementById('sendMailConfirmDialog').classList.remove('active');
+                closeDialog('mailingDialog');
+                mailAttachments = [];
+                pendingMailData = null;
+                
+                showMessageDialog('Úspěch', 'Zpráva úspěšně odeslána!');
+                updateUnreadBadge();
+                
+            } catch (error) {
+                console.error('Chyba:', error);
+                showMessageDialog('Chyba', 'Chyba při odesílání: ' + error.message);
+                closeSendMailConfirm();
+            }
+        }
+
+        function showMessageDialog(title, message) {
+            showConfirm(title, message, () => {});
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             loadDesktopItems();
@@ -491,7 +669,7 @@
             // Drag and drop event listeners
             desktop.addEventListener('dragover', (e) => {
                 e.preventDefault();
-                e.dataTransfer.dropEffect = 'copy';
+                e.dataTransfer.dropEffect = 'move';
                 desktop.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
             });
 
@@ -504,6 +682,28 @@
             desktop.addEventListener('drop', (e) => {
                 e.preventDefault();
                 desktop.style.backgroundColor = '';
+                
+                console.log('Desktop DROP event triggered');
+                console.log('currentlyDraggedForMail:', currentlyDraggedForMail);
+                
+                // Handle dragged attachment from message
+                if (currentlyDraggedForMail) {
+                    const x = e.clientX;
+                    const y = e.clientY;
+                    
+                    console.log('Processing attachment drop:', currentlyDraggedForMail, 'at', x, y);
+                    
+                    if (currentMessageId) {
+                        // Volat API endpoint pro kopírování attachmentu
+                        copyAttachmentToDesktop(currentMessageId, currentlyDraggedForMail, x, y);
+                    } else {
+                        console.log('Chyba: currentMessageId není nastaven');
+                    }
+                    
+                    currentlyDraggedForMail = null;
+                }
+                
+                // Handle files from File Explorer
                 if (e.dataTransfer.files.length > 0) {
                     const files = Array.from(e.dataTransfer.files);
                     files.forEach(file => {
@@ -691,6 +891,36 @@
             }
         }
 
+        async function updateFolderParent(folderId, parentFolderId, x, y) {
+            try {
+                const body = { x_position: x, y_position: y };
+                if (parentFolderId !== null) {
+                    body.parent_folder = parentFolderId;
+                }
+                
+                await fetch(`/api/api/folders/${folderId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify(body)
+                });
+                
+                // Aktualizuj lokální array bez reload
+                const folder = folders.find(f => f.id === folderId);
+                if (folder) {
+                    folder.x_position = x;
+                    folder.y_position = y;
+                    if (parentFolderId !== null) {
+                        folder.parent_folder = parentFolderId;
+                    }
+                }
+            } catch (error) {
+                console.error('Chyba při přesunování složky:', error);
+            }
+        }
+
         function selectFolder(folder, element) {
             document.querySelectorAll('.desktop-icon').forEach(el => el.classList.remove('selected'));
             element.classList.add('selected');
@@ -784,6 +1014,14 @@
             if (e.button !== 0) return;
 
             draggedItem = { file, element, type: 'file' };
+            // Sleduj pro mail drop
+            currentlyDraggedForMail = { 
+                id: file.id, 
+                type: 'file', 
+                name: file.name,
+                file_type: file.file_type
+            };
+            
             const rect = element.getBoundingClientRect();
             offsetX = e.clientX - rect.left;
             offsetY = e.clientY - rect.top;
@@ -812,10 +1050,91 @@
                 document.removeEventListener('mousemove', onMouseMove);
                 document.removeEventListener('mouseup', onMouseUp);
                 draggedItem = null;
+                currentlyDraggedForMail = null;
             }
 
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function startAttachmentDrag(e) {
+            // HTML5 Drag and Drop
+            console.log('Attachment drag started');
+            
+            const element = e.target.closest('.attachment-item-msg');
+            if (!element) return;
+            
+            // Nastavit data co se přetahuje pro drag-and-drop
+            currentlyDraggedForMail = {
+                id: parseInt(element.dataset.itemId),
+                type: element.dataset.itemType,
+                name: element.dataset.itemName
+            };
+            
+            console.log('Set currentlyDraggedForMail:', currentlyDraggedForMail);
+            
+            element.style.cursor = 'grabbing';
+            element.style.opacity = '0.7';
+            
+            // setData for native drag-and-drop
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', JSON.stringify(currentlyDraggedForMail));
+        }
+
+        function endAttachmentDrag(e) {
+            console.log('Attachment drag ended');
+            const element = e.target.closest('.attachment-item-msg');
+            if (element) {
+                element.style.cursor = 'grab';
+                element.style.opacity = '1';
+            }
+            // Note: don't clear currentlyDraggedForMail here - let drop handler do it
+        }
+
+        async function copyAttachmentToDesktop(messageId, attachment, x, y) {
+            try {
+                console.log('Copying attachment:', attachment);
+                console.log('Attachment.id type:', typeof attachment.id, 'value:', attachment.id);
+                console.log('Attachment.type:', attachment.type);
+                
+                const response = await fetch(`/api/api/messages/${messageId}/copy_attachment/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({
+                        attachment_id: attachment.id,
+                        type: attachment.type,
+                        x_position: x,
+                        y_position: y
+                    })
+                });
+                
+                console.log('Copy attachment response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Attachment copied successfully:', data);
+                    
+                    // Přidat nový soubor/složku do globálního pole
+                    if (attachment.type === 'file' && data.file) {
+                        files.push(data.file);
+                    } else if (attachment.type === 'folder' && data.folder) {
+                        folders.push(data.folder);
+                    }
+                    
+                    // Překreslit desktop
+                    renderDesktop();
+                } else {
+                    const error = await response.json();
+                    console.error('Chyba při kopírování attachmentu:', error);
+                    alert('Chyba při kopírování attachmentu: ' + error.error);
+                }
+            } catch (error) {
+                console.error('Chyba:', error);
+                alert('Chyba při kopírování attachmentu');
+            }
         }
 
         function detectCollision(draggedElement, x, y) {
@@ -846,6 +1165,124 @@
                 }
             }
             return null;
+        }
+
+        function startFolderItemDrag(e, element, folderId) {
+            if (e.button !== 0) return;
+            
+            const itemId = parseInt(element.dataset.itemId);
+            const itemType = element.dataset.itemType;
+            
+            // Prvo, čeka se delay od 100ms prije nego što se počne drag
+            let dragStarted = false;
+            let dragTimeout = setTimeout(() => {
+                dragStarted = true;
+            }, 100);
+            
+            const rect = element.getBoundingClientRect();
+            const offsetX = e.clientX - rect.left;
+            const offsetY = e.clientY - rect.top;
+            
+            // Kreiraj privremeni drag element
+            const dragElement = element.cloneNode(true);
+            dragElement.style.position = 'fixed';
+            dragElement.style.pointerEvents = 'none';
+            dragElement.style.opacity = '0.7';
+            dragElement.style.zIndex = '10000';
+            dragElement.style.width = rect.width + 'px';
+            dragElement.style.height = rect.height + 'px';
+            document.body.appendChild(dragElement);
+            
+            function onMouseMove(moveEvent) {
+                if (!dragStarted) return;
+                
+                dragElement.style.left = (moveEvent.clientX - offsetX) + 'px';
+                dragElement.style.top = (moveEvent.clientY - offsetY) + 'px';
+            }
+            
+            function onMouseUp(upEvent) {
+                clearTimeout(dragTimeout);
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                dragElement.remove();
+                
+                if (!dragStarted) return;
+                
+                // Provjeri je li korisnik pustio element van prozora
+                const windowId = `window-folder-${folderId}`;
+                const folderWindow = document.getElementById(windowId);
+                
+                if (folderWindow) {
+                    const windowRect = folderWindow.getBoundingClientRect();
+                    const dropX = upEvent.clientX;
+                    const dropY = upEvent.clientY;
+                    
+                    // Provjeravamo je li drop ostao u istom prozoru
+                    const isInsideWindow = dropX >= windowRect.left && 
+                                         dropX <= windowRect.right &&
+                                         dropY >= windowRect.top && 
+                                         dropY <= windowRect.bottom;
+                    
+                    if (!isInsideWindow) {
+                        // Korisnik je prevukao element van prozora - premjesti ga na desktop
+                        const desktopX = dropX;
+                        const desktopY = dropY;
+                        
+                        if (itemType === 'file') {
+                            moveFileOutOfFolder(itemId, folderId, desktopX, desktopY);
+                        } else if (itemType === 'folder') {
+                            moveFolderOutOfFolder(itemId, folderId, desktopX, desktopY);
+                        }
+                    }
+                }
+            }
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        async function moveFileOutOfFolder(fileId, folderId, x, y) {
+            try {
+                await fetch(`/api/api/files/${fileId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ 
+                        folder: null,
+                        x_position: x,
+                        y_position: y
+                    })
+                });
+                // Osvježi sadržaj mape i desktop
+                loadFolderContent(folderId);
+                loadDesktopItems();
+            } catch (error) {
+                console.error('Greška pri premještanju datoteke van mape:', error);
+            }
+        }
+
+        async function moveFolderOutOfFolder(folderId, parentFolderId, x, y) {
+            try {
+                await fetch(`/api/api/folders/${folderId}/`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ 
+                        parent: null,
+                        x_position: x,
+                        y_position: y
+                    })
+                });
+                // Osvježi sadržaj mape i desktop
+                loadFolderContent(parentFolderId);
+                loadDesktopItems();
+            } catch (error) {
+                console.error('Greška pri premještanju mape van mape:', error);
+            }
         }
 
         async function handleItemCollision(draggedFile, targetElement) {
@@ -912,11 +1349,16 @@
 
         async function confirmNewFolderName(event) {
             event.preventDefault();
-            const folderName = document.getElementById('folderNameInput').value.trim();
+            let folderName = document.getElementById('folderNameInput').value.trim();
             
             if (!folderName) {
                 alert('Prosím, zadejte název složky');
                 return;
+            }
+
+            // Ověřit duplicitní jméno a získat unikátní jméno
+            if (checkDuplicateFolderName(folderName)) {
+                folderName = getUniqueFolderName(folderName);
             }
 
             closeDialog('folderNameDialog');
@@ -951,15 +1393,20 @@
             }
         }
 
-        async function updateFilePosition(fileId, x, y) {
+        async function updateFilePosition(fileId, x, y, folderId = null) {
             try {
+                const body = { x_position: x, y_position: y };
+                if (folderId !== null) {
+                    body.folder = folderId;
+                }
+                
                 await fetch(`/api/api/files/${fileId}/update_position/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrftoken
                     },
-                    body: JSON.stringify({ x_position: x, y_position: y })
+                    body: JSON.stringify(body)
                 });
                 
                 // Aktualizuj lokální array bez reload
@@ -967,6 +1414,9 @@
                 if (file) {
                     file.x_position = x;
                     file.y_position = y;
+                    if (folderId !== null) {
+                        file.folder = folderId;
+                    }
                 }
             } catch (error) {
                 console.error('Chyba při aktualizaci pozice:', error);
@@ -1100,7 +1550,7 @@
                     html += '</div>';
                     contentDiv.innerHTML = html;
                     
-                    // Přidat event listenery pro context menu na dynamicky generované prvky
+                    // Přidat event listenery pro context menu a drag-and-drop na dynamicky generované prvky
                     contentDiv.querySelectorAll('.file-item, .folder-item').forEach(item => {
                         item.addEventListener('contextmenu', (e) => {
                             e.preventDefault();
@@ -1112,6 +1562,9 @@
                             console.log('Context menu on', item.dataset.itemType, ':', itemData);
                             showContextMenu(e.clientX, e.clientY, itemData, item.dataset.itemType);
                         });
+                        
+                        // Drag and drop pro položky v složce
+                        item.addEventListener('mousedown', (e) => startFolderItemDrag(e, item, folderId));
                     });
                 }
             } catch (error) {
@@ -1121,17 +1574,22 @@
 
         function getNextWindowPosition() {
             // Vypočítat pozici pro nové okno s odsazením
-            let x = 100 + windowOffset.x;
-            let y = 100 + windowOffset.y;
+            const taskbarHeight = 120; // Taskbar výška + padding
+            const maxY = window.innerHeight - taskbarHeight - 200; // Vyhradit místo pro taskbar
+            
+            let x = 50 + windowOffset.x;
+            let y = 50 + windowOffset.y;
 
             // Aktualizovat offset pro další okno
             windowOffset.x += WINDOW_OFFSET;
             windowOffset.y += WINDOW_OFFSET;
 
             // Reset offset pokud je okno mimo viewport
-            if (x > window.innerWidth - 300 || y > window.innerHeight - 200) {
+            if (x > window.innerWidth - 300 || y > maxY) {
                 windowOffset.x = 0;
                 windowOffset.y = 0;
+                x = 50;
+                y = 50;
             }
 
             return { x, y };
@@ -1146,6 +1604,14 @@
             );
         }
 
+        function checkDuplicateFolderName(folderName, parentFolder = null) {
+            // Kontrola duplicit v seznamu složek
+            return folders.some(f => 
+                f.name === folderName && 
+                f.parent === parentFolder
+            );
+        }
+
         function getUniqueFileName(baseName, fileType, targetFolder = null) {
             // Pokud jméno již existuje, přidat číslo
             let fileName = baseName;
@@ -1154,10 +1620,22 @@
             const nameWithoutExt = baseName.includes('.') ? baseName.substring(0, baseName.lastIndexOf('.')) : baseName;
 
             while (checkDuplicateFileName(fileName, fileType, targetFolder)) {
-                fileName = `${nameWithoutExt} (${counter})${extension}`;
+                fileName = `${nameWithoutExt}(${counter})${extension}`;
                 counter++;
             }
             return fileName;
+        }
+
+        function getUniqueFolderName(baseName, parentFolder = null) {
+            // Pokud jméno složky již existuje, přidat číslo
+            let folderName = baseName;
+            let counter = 1;
+
+            while (checkDuplicateFolderName(folderName, parentFolder)) {
+                folderName = `${baseName}(${counter})`;
+                counter++;
+            }
+            return folderName;
         }
 
         function createWindow(file, windowId) {
@@ -1450,34 +1928,38 @@
 
         async function deleteItem() {
             console.log('deleteItem called, selectedItem:', selectedItem);
-            if (selectedItem && confirm('Opravdu chcete smazat tuto položku?')) {
-                try {
-                    const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
-                    await fetch(`/api/api/${endpoint}/${selectedItem.id}/`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRFToken': csrftoken
-                        }
-                    });
-                    loadDesktopItems();
-                    
-                    // Reload folder windows pokud je soubor/složka ve složce
-                    if (selectedItem.type === 'file' && selectedItem.folder) {
-                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.folder}`);
-                        if (folderContentDiv) {
-                            loadFolderContent(selectedItem.folder);
-                        }
-                    } else if (selectedItem.type === 'folder' && selectedItem.parent) {
-                        const folderContentDiv = document.getElementById(`folder-content-${selectedItem.parent}`);
-                        if (folderContentDiv) {
-                            loadFolderContent(selectedItem.parent);
+            if (selectedItem) {
+                showConfirm('Smazat položku', 'Opravdu chcete smazat tuto položku?', async (confirmed) => {
+                    if (confirmed) {
+                        try {
+                            const endpoint = selectedItem.type === 'folder' ? 'folders' : 'files';
+                            await fetch(`/api/api/${endpoint}/${selectedItem.id}/`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'X-CSRFToken': csrftoken
+                                }
+                            });
+                            loadDesktopItems();
+                            
+                            // Reload folder windows pokud je soubor/složka ve složce
+                            if (selectedItem.type === 'file' && selectedItem.folder) {
+                                const folderContentDiv = document.getElementById(`folder-content-${selectedItem.folder}`);
+                                if (folderContentDiv) {
+                                    loadFolderContent(selectedItem.folder);
+                                }
+                            } else if (selectedItem.type === 'folder' && selectedItem.parent) {
+                                const folderContentDiv = document.getElementById(`folder-content-${selectedItem.parent}`);
+                                if (folderContentDiv) {
+                                    loadFolderContent(selectedItem.parent);
+                                }
+                            }
+                            
+                            selectedItem = null;
+                        } catch (error) {
+                            console.error('Chyba při mazání:', error);
                         }
                     }
-                    
-                    selectedItem = null;
-                } catch (error) {
-                    console.error('Chyba při mazání:', error);
-                }
+                });
             } else {
                 console.log('Zrušeno nebo selectedItem prázdný');
             }
@@ -1587,6 +2069,9 @@
                 if (fileIndex !== -1) {
                     files[fileIndex].content = content;
                 }
+                
+                // Zavři okno po úspěšném uložení
+                closeWindow(`window-file-${fileId}`);
                 
             } catch (error) {
                 console.error('Chyba:', error);
@@ -1776,6 +2261,9 @@
 
         async function confirmNewFile(e) {
             e.preventDefault();
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            
             let name = document.getElementById('newFileInput').value;
             if (name) {
                 try {
@@ -1807,6 +2295,7 @@
                         const error = await response.json();
                         console.error('API chyba:', error);
                         alert('Chyba: ' + JSON.stringify(error));
+                        submitButton.disabled = false;
                         return;
                     }
                     
@@ -1814,6 +2303,7 @@
                     loadDesktopItems();
                     closeDialog('newFileDialog');
                     document.getElementById('newFileInput').value = '';
+                    submitButton.disabled = false;
                     
                     // Otevřít nový soubor rovnou
                     setTimeout(() => {
@@ -1822,15 +2312,23 @@
                 } catch (error) {
                     console.error('Chyba při vytváření souboru:', error);
                     alert('Chyba: ' + error.message);
+                    submitButton.disabled = false;
                 }
+            } else {
+                submitButton.disabled = false;
             }
         }
 
         async function confirmNewFolder(e) {
             e.preventDefault();
-            const name = document.getElementById('newFolderInput').value;
+            let name = document.getElementById('newFolderInput').value;
             if (name) {
                 try {
+                    // Ověřit duplicitní jméno a získat unikátní jméno
+                    if (checkDuplicateFolderName(name)) {
+                        name = getUniqueFolderName(name);
+                    }
+
                     // Náhodná pozice
                     const x = Math.floor(Math.random() * 400) + 50;
                     const y = Math.floor(Math.random() * 300) + 50;
@@ -1951,13 +2449,16 @@
         function maximizeWindow(windowId) {
             const window = document.getElementById(windowId);
             if (window.style.width === '100%') {
+                // Restore to normal size
                 window.style.width = '600px';
                 window.style.height = '400px';
                 window.style.left = '100px';
                 window.style.top = '100px';
             } else {
+                // Maximize but leave space for taskbar
+                const taskbarHeight = 120; // taskbar + padding
                 window.style.width = '100%';
-                window.style.height = '100%';
+                window.style.height = `calc(100% - ${taskbarHeight}px)`;
                 window.style.left = '0';
                 window.style.top = '0';
             }
@@ -1972,12 +2473,7 @@
                 if (file && file.file_type === 'text') {
                     const textarea = document.getElementById(`file-content-${fileId}`);
                     if (textarea) {
-                        // Compare current content with saved content
-                        if (textarea.value !== file.content) {
-                            if (!confirm('Máte neuložené změny. Opravdu chcete zavřít bez uložení?')) {
-                                return; // Don't close if user clicks Cancel
-                            }
-                        }
+                        // Just close without asking - auto-save or discard
                     }
                 }
             }
@@ -1988,10 +2484,440 @@
         }
 
         function logout() {
-            if (confirm('Opravdu se chcete odhlásit?')) {
-                window.location.href = '/logout/';
+            showConfirm('Odhlášení', 'Opravdu se chcete odhlásit?', (confirmed) => {
+                if (confirmed) {
+                    window.location.href = '/logout/';
+                }
+            });
+        }
+
+        // Mailing System Functions
+        let mailAttachments = [];
+        let currentMessageId = null;  // Sleduje jakou zprávu si právě čte
+
+        function openMailingWindow() {
+            document.getElementById('mailingDialog').classList.add('active');
+            
+            // Reset form
+            document.getElementById('mailRecipients').value = '';
+            document.getElementById('mailSubject').value = '';
+            document.getElementById('mailBody').value = '';
+            mailAttachments = [];
+            document.getElementById('mailAttachmentList').innerHTML = '';
+        }
+
+        function updateMailAttachmentList() {
+            const list = document.getElementById('mailAttachmentList');
+            list.innerHTML = '';
+            
+            mailAttachments.forEach((attachment, index) => {
+                const tag = document.createElement('div');
+                tag.style.cssText = 'background: #667eea; color: white; padding: 6px 12px; border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 6px;';
+                tag.innerHTML = `
+                    ${attachment.name}
+                    <button type="button" style="background: none; border: none; color: white; cursor: pointer; font-size: 14px; padding: 0;" onclick="removeMailAttachment(${index})">✕</button>
+                `;
+                list.appendChild(tag);
+            });
+        }
+
+        function removeMailAttachment(index) {
+            mailAttachments.splice(index, 1);
+            updateMailAttachmentList();
+        }
+
+        async function sendMail(event) {
+            event.preventDefault();
+            
+            const recipients = document.getElementById('mailRecipients').value
+                .split(',')
+                .map(r => r.trim())
+                .filter(r => r);
+            
+            if (recipients.length === 0) {
+                showMessageDialog('Chyba', 'Zadejte alespoň jednoho příjemce');
+                return;
+            }
+            
+            const subject = document.getElementById('mailSubject').value.trim();
+            const body = document.getElementById('mailBody').value.trim();
+            
+            if (!subject || !body) {
+                showMessageDialog('Chyba', 'Vyplňte předmět a zprávu');
+                return;
+            }
+            
+            // Prepare attachment data
+            const attachmentData = mailAttachments.map(att => ({
+                id: att.id,
+                type: att.type,
+                name: att.name
+            }));
+            
+            // Store data for confirmation
+            pendingMailData = {
+                recipients: recipients,
+                subject: subject,
+                body: body,
+                attachmentData: attachmentData
+            };
+            
+            // Show confirmation dialog
+            showSendMailConfirm(recipients.length, attachmentData.length);
+        }
+
+        async function openReceivedMessagesWindow() {
+            document.getElementById('receivedMessagesDialog').classList.add('active');
+            await loadReceivedMessages();
+        }
+
+        async function loadReceivedMessages() {
+            try {
+                const response = await fetch('/api/api/messages/inbox/', {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    document.getElementById('messagesList').innerHTML = '<p style="color: #e74c3c;">Chyba při načítání zpráv</p>';
+                    return;
+                }
+                
+                const messages = await response.json();
+                console.log('Loaded messages:', messages);  // Debug
+                
+                if (messages.length === 0) {
+                    document.getElementById('messagesList').innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Zatím jste neobdrželi žádné zprávy</p>';
+                    return;
+                }
+                
+                let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+                
+                messages.forEach(message => {
+                    console.log('Message attachments:', message.attachments);  // Debug
+                    const date = new Date(message.created_at);
+                    const formattedDate = date.toLocaleString('cs-CZ');
+                    const unreadClass = message.is_read ? '' : ' style="background: #f0f0f0; border-left: 4px solid #667eea;"';
+                    
+                    let attachmentsHtml = '';
+                    if (message.attachments && message.attachments.length > 0) {
+                        attachmentsHtml = '<div style="font-size: 11px; color: #666; margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee;">';
+                        message.attachments.forEach(att => {
+                            console.log('Attachment:', att);  // Debug
+                            const iconTypes = {
+                                'text': '📄',
+                                'image': '🖼️',
+                                'document': '📋',
+                                'video': '🎬',
+                                'audio': '🎵',
+                                'archive': '📦',
+                                'other': '📁'
+                            };
+                            let icon = '📁';
+                            let attName = '';
+                            if (att.file_name) {
+                                attName = att.file_name;
+                                icon = iconTypes[att.file_type] || '📄';
+                            } else if (att.folder_name) {
+                                attName = att.folder_name;
+                                icon = '📁';
+                            }
+                            attachmentsHtml += `<div style="margin: 2px 0;">${icon} ${attName}</div>`;
+                        });
+                        attachmentsHtml += '</div>';
+                    }
+                    
+                    html += `
+                        <div${unreadClass} style="padding: 12px; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='${message.is_read ? 'white' : '#f0f0f0'}'" onclick="viewMessage(${message.id})">
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 5px;">
+                                <div style="font-weight: 600; color: #333;">Od: ${message.sender_username}</div>
+                                <div style="font-size: 12px; color: #999;">${formattedDate}</div>
+                            </div>
+                            <div style="font-weight: 500; margin-bottom: 5px; color: #667eea;">Předmět: ${message.subject}</div>
+                            <div style="font-size: 13px; color: #666; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${message.body.substring(0, 100)}</div>
+                            ${attachmentsHtml}
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                document.getElementById('messagesList').innerHTML = html;
+                
+            } catch (error) {
+                console.error('Chyba:', error);
+                document.getElementById('messagesList').innerHTML = '<p style="color: #e74c3c;">Chyba při načítání zpráv: ' + error.message + '</p>';
             }
         }
+
+        async function viewMessage(messageId) {
+            try {
+                const response = await fetch(`/api/api/messages/${messageId}/`, {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                
+                if (!response.ok) {
+                    alert('Chyba při načítání zprávy');
+                    return;
+                }
+                
+                const message = await response.json();
+                
+                // Mark as read if not already
+                if (!message.is_read) {
+                    await fetch(`/api/api/messages/${messageId}/mark_as_read/`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrftoken
+                        }
+                    });
+                    updateUnreadBadge();
+                }
+                
+                // Create and display message details window
+                createMessageDetailsWindow(message);
+                
+            } catch (error) {
+                console.error('Chyba:', error);
+                alert('Chyba při otevírání zprávy');
+            }
+        }
+
+        function createMessageDetailsWindow(message) {
+            currentMessageId = message.id;  // Nastavit aktuální zprávu
+            const windowId = 'window-message-' + message.id;
+            const existingWindow = document.getElementById(windowId);
+            
+            if (existingWindow) {
+                existingWindow.remove();
+            }
+            
+            const window = document.createElement('div');
+            window.className = 'window';
+            window.id = windowId;
+            
+            // Get smart position for window
+            const pos = getNextWindowPosition();
+            window.style.left = pos.x + 'px';
+            window.style.top = pos.y + 'px';
+            
+            window.style.width = '700px';
+            window.style.height = '500px';
+            window.style.zIndex = '500';
+
+            const date = new Date(message.created_at);
+            const formattedDate = date.toLocaleString('cs-CZ');
+            
+            let attachmentsHtml = '';
+            if (message.attachments && message.attachments.length > 0) {
+                attachmentsHtml = '<div style="margin-top: 15px; border-top: 1px solid #ddd; padding-top: 10px;"><strong>Přílohy:</strong><div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">';
+                message.attachments.forEach((att, idx) => {
+                    const iconTypes = {
+                        'text': '📄',
+                        'image': '🖼️',
+                        'document': '📋',
+                        'video': '🎬',
+                        'audio': '🎵',
+                        'archive': '📦',
+                        'other': '📁'
+                    };
+                    
+                    let attName = '';
+                    let icon = '📁';
+                    let attId = '';
+                    let attType = '';
+                    
+                    if (att.file_name) {
+                        attName = att.file_name;
+                        icon = iconTypes[att.file_type] || '📄';
+                        attId = att.file;
+                        attType = 'file';
+                    } else if (att.folder_name) {
+                        attName = att.folder_name;
+                        icon = '📁';
+                        attId = att.folder;
+                        attType = 'folder';
+                    }
+                    
+                    attachmentsHtml += `
+                        <div 
+                            class="attachment-item-msg"
+                            draggable="true"
+                            data-item-id="${attId}"
+                            data-item-type="${attType}"
+                            data-item-name="${attName}"
+                            style="background: #667eea; color: white; padding: 8px 12px; border-radius: 4px; font-size: 12px; cursor: grab; user-select: none;"
+                            ondragstart="startAttachmentDrag(event)"
+                            ondragend="endAttachmentDrag(event)"
+                        >
+                            ${icon} ${attName}
+                        </div>
+                    `;
+                });
+                attachmentsHtml += '</div></div>';
+            }
+
+            window.innerHTML = `
+                <div class="window-header">
+                    <div class="window-title">✉️ Flux od ${message.sender_username}</div>
+                    <div class="window-controls">
+                        <button class="window-btn" onclick="minimizeWindow('${windowId}')">−</button>
+                        <button class="window-btn" onclick="maximizeWindow('${windowId}')">□</button>
+                        <button class="window-btn" onclick="closeWindow('${windowId}')">✕</button>
+                    </div>
+                </div>
+                <div class="window-content" style="display: flex; flex-direction: column; overflow-y: auto; padding: 15px;">
+                    <div style="display: grid; grid-template-columns: 100px 1fr; gap: 10px; margin-bottom: 15px; border-bottom: 1px solid #ddd; padding-bottom: 10px;">
+                        <strong>Od:</strong><div>${message.sender_username}</div>
+                        <strong>Předmět:</strong><div>${message.subject}</div>
+                        <strong>Datum:</strong><div>${formattedDate}</div>
+                    </div>
+                    <div style="flex: 1; white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 13px; line-height: 1.6; color: #333; margin-bottom: 15px;">${message.body}</div>
+                    ${attachmentsHtml}
+                </div>
+            `;
+
+            document.body.appendChild(window);
+            makeWindowDraggable(window);
+            makeWindowResizable(window);
+            addToTaskbar(windowId);
+            windows[windowId] = { title: `Flux od ${message.sender_username}` };
+        }
+
+        async function updateUnreadBadge() {
+            try {
+                const response = await fetch('/api/api/messages/inbox/', {
+                    headers: {
+                        'X-CSRFToken': csrftoken
+                    }
+                });
+                
+                if (response.ok) {
+                    const messages = await response.json();
+                    const unreadCount = messages.filter(m => !m.is_read).length;
+                    const badge = document.getElementById('unreadBadge');
+                    
+                    if (unreadCount > 0) {
+                        badge.textContent = unreadCount;
+                        badge.style.display = 'flex';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } catch (error) {
+                console.error('Chyba při aktualizaci oznámení:', error);
+            }
+        }
+
+        // Initialize unread badge on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            updateUnreadBadge();
+            // Refresh badge every 30 seconds
+            setInterval(updateUnreadBadge, 30000);
+        });
+
+        // Attachment Selector Functions
+        async function openAttachmentSelector() {
+            document.getElementById('attachmentSelectorDialog').classList.add('active');
+            
+            const content = document.getElementById('attachmentSelectorContent');
+            content.innerHTML = '<p style="text-align: center; color: #999;">Načítání...</p>';
+            
+            try {
+                // Fetch user's desktop files and folders
+                const filesResponse = await fetch('/api/api/files/all_files/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+                    }
+                });
+                const filesData = await filesResponse.json();
+                
+                const foldersResponse = await fetch('/api/api/folders/root_folders/', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+                    }
+                });
+                const foldersData = await foldersResponse.json();
+                
+                // Build checkbox list
+                let html = '';
+                
+                if (filesData.length > 0 || foldersData.length > 0) {
+                    // Desktop files (bez složky)
+                    const rootFiles = filesData.filter(f => !f.folder);
+                    if (rootFiles.length > 0) {
+                        html += '<h4 style="margin-bottom: 10px; color: #333;">📄 Soubory na ploše:</h4>';
+                        rootFiles.forEach(file => {
+                            const isChecked = mailAttachments.some(a => a.id === file.id && a.type === 'file') ? 'checked' : '';
+                            html += `
+                                <div style="margin-bottom: 8px; margin-left: 10px;">
+                                    <input type="checkbox" id="file_${file.id}" data-type="file" data-id="${file.id}" data-name="${file.name}" ${isChecked} class="attachment-checkbox">
+                                    <label for="file_${file.id}" style="margin-left: 5px; cursor: pointer; color: #555;">${file.name}</label>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    // Desktop folders
+                    if (foldersData.length > 0) {
+                        html += '<h4 style="margin-top: 15px; margin-bottom: 10px; color: #333;">📁 Složky na ploše:</h4>';
+                        foldersData.forEach(folder => {
+                            const isChecked = mailAttachments.some(a => a.id === folder.id && a.type === 'folder') ? 'checked' : '';
+                            
+                            // Složka
+                            html += `
+                                <div style="margin-bottom: 8px;">
+                                    <input type="checkbox" id="folder_${folder.id}" data-type="folder" data-id="${folder.id}" data-name="${folder.name}" ${isChecked} class="attachment-checkbox">
+                                    <label for="folder_${folder.id}" style="margin-left: 5px; cursor: pointer; color: #555; font-weight: bold;">📁 ${folder.name}</label>
+                                </div>
+                            `;
+                            
+                            // Soubory v této složce (indentované)
+                            const folderFiles = filesData.filter(f => f.folder === folder.id);
+                            if (folderFiles.length > 0) {
+                                html += '<div style="margin-left: 30px; margin-bottom: 8px;">';
+                                folderFiles.forEach(file => {
+                                    const isFileChecked = mailAttachments.some(a => a.id === file.id && a.type === 'file') ? 'checked' : '';
+                                    html += `
+                                        <div style="margin-bottom: 6px;">
+                                            <input type="checkbox" id="file_${file.id}" data-type="file" data-id="${file.id}" data-name="${file.name}" ${isFileChecked} class="attachment-checkbox">
+                                            <label for="file_${file.id}" style="margin-left: 5px; cursor: pointer; color: #666; font-size: 13px;">📄 ${file.name}</label>
+                                        </div>
+                                    `;
+                                });
+                                html += '</div>';
+                            }
+                        });
+                    }
+                } else {
+                    html = '<p style="color: #999; text-align: center;">Žádné soubory nebo složky na ploše</p>';
+                }
+                
+                content.innerHTML = html;
+            } catch (error) {
+                console.error('Chyba při načítání příloh:', error);
+                content.innerHTML = '<p style="color: red; text-align: center;">Chyba při načítání příloh</p>';
+            }
+        }
+
+        function confirmAttachmentSelection() {
+            const checkboxes = document.querySelectorAll('.attachment-checkbox:checked');
+            mailAttachments = [];
+            
+            checkboxes.forEach(checkbox => {
+                mailAttachments.push({
+                    id: parseInt(checkbox.dataset.id),
+                    type: checkbox.dataset.type,
+                    name: checkbox.dataset.name
+                });
+            });
+            
+            updateMailAttachmentList();
+            closeDialog('attachmentSelectorDialog');
+        }
+
     </script>
 </body>
 </html>
