@@ -1,12 +1,7 @@
 from django.contrib import admin
 
 # Register your models here.
-from .models import Article, War, Tactics, Era, DesktopFile, DesktopFolder, DesktopWindow
-
-admin.site.register(Article)
-admin.site.register(War)
-admin.site.register(Tactics)
-admin.site.register(Era)
+from .models import DesktopFile, DesktopFolder, DesktopWindow
 
 
 @admin.register(DesktopFolder)

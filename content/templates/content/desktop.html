@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% csrf_token %}
     <title>Flux Horizon</title>
     <style>
         * {
@@ -479,7 +480,7 @@
             <p id="sendMailConfirmMessage" style="margin-bottom: 20px; color: #666;"></p>
             <div class="form-buttons">
                 <button type="button" class="btn" onclick="closeSendMailConfirm()" style="background: #999;">Zrušit</button>
-                <button type="button" class="btn" onclick="proceedSendMail()" style="background: #764ba2;">Odeslat</button>
+                <button type="button" class="btn" id="mailConfirmSendButton" onclick="proceedSendMail()" style="background: #764ba2;">Odeslat</button>
             </div>
         </div>
     </div>
@@ -499,7 +500,7 @@
                 </div>
                 <div class="form-group">
                     <label for="mailBody" class="form-label">Zpráva:</label>
-                    <textarea id="mailBody" class="form-input" style="resize: vertical; min-height: 200px; font-family: monospace;" placeholder="Zadejte zprávu..." required></textarea>
+                    <textarea id="mailBody" class="form-input" style="resize: vertical; min-height: 200px; font-family: monospace;" placeholder="Zadejte zprávu..."></textarea>
                 </div>
                 <div class="form-group">
                     <label for="mailAttachmentArea" class="form-label">Přílohy:</label>
@@ -508,7 +509,7 @@
                 </div>
                 <div class="form-buttons">
                     <button type="button" class="btn" onclick="closeDialog('mailingDialog')" style="background: #999;">Zrušit</button>
-                    <button type="submit" class="btn" style="background: #764ba2;">Poslat</button>
+                    <button type="submit" class="btn" id="mailSendButton" style="background: #764ba2;">Poslat</button>
                 </div>
             </form>
         </div>
@@ -544,7 +545,16 @@
     </div>
 
     <script>
-        const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
+        // Get CSRF token from meta tag or form input
+        function getCSRFToken() {
+            let token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            if (!token) {
+                token = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+            }
+            return token || '';
+        }
+        
+        const csrftoken = getCSRFToken();
         let files = [];
         let folders = [];
         let windows = {};
@@ -604,6 +614,9 @@
         async function proceedSendMail() {
             if (!pendingMailData) return;
             
+            const confirmButton = document.getElementById('mailConfirmSendButton');
+            confirmButton.disabled = true;
+            
             const { recipients, subject, body, attachmentData } = pendingMailData;
             
             try {
@@ -624,6 +637,7 @@
                 if (!response.ok) {
                     const error = await response.json();
                     showMessageDialog('Chyba', 'Chyba při odesílání: ' + JSON.stringify(error));
+                    confirmButton.disabled = false;
                     closeSendMailConfirm();
                     return;
                 }
@@ -633,6 +647,7 @@
                 closeDialog('mailingDialog');
                 mailAttachments = [];
                 pendingMailData = null;
+                confirmButton.disabled = false;
                 
                 showMessageDialog('Úspěch', 'Zpráva úspěšně odeslána!');
                 updateUnreadBadge();
@@ -640,6 +655,7 @@
             } catch (error) {
                 console.error('Chyba:', error);
                 showMessageDialog('Chyba', 'Chyba při odesílání: ' + error.message);
+                confirmButton.disabled = false;
                 closeSendMailConfirm();
             }
         }
@@ -1724,8 +1740,8 @@
                             <iframe src="${file.content}" style="width: 100%; height: 100%; border: none;"></iframe>
                         </div>
                     `;
-                } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pptx') || fileName.endsWith('.ppt')) {
-                    // Word, PowerPoint - zobrazit zprávu se tlačítkem stažení
+                } else if (fileName.endsWith('.docx') || fileName.endsWith('.doc') || fileName.endsWith('.pptx') || fileName.endsWith('.ppt') || fileName.endsWith('.zip')) {
+                    // Word, PowerPoint, ZIP - zobrazit zprávu se tlačítkem stažení
                     contentHtml = `
                         <div style="display: flex; flex-direction: column; flex: 1; overflow: auto; padding: 20px; align-items: center; justify-content: center;">
                             <p style="font-size: 16px; color: #666;">${file.name}</p>
@@ -2520,8 +2536,7 @@
         function openMailingWindow() {
             document.getElementById('mailingDialog').classList.add('active');
             
-            // Reset form
-            document.getElementById('mailRecipients').value = '';
+            // Reset form - keep recipients prefilled, only clear subject and message
             document.getElementById('mailSubject').value = '';
             document.getElementById('mailBody').value = '';
             mailAttachments = [];
@@ -2551,6 +2566,9 @@
         async function sendMail(event) {
             event.preventDefault();
             
+            const submitButton = document.getElementById('mailSendButton');
+            submitButton.disabled = true;
+            
             const recipients = document.getElementById('mailRecipients').value
                 .split(',')
                 .map(r => r.trim())
@@ -2558,14 +2576,16 @@
             
             if (recipients.length === 0) {
                 showMessageDialog('Chyba', 'Zadejte alespoň jednoho příjemce');
+                submitButton.disabled = false;
                 return;
             }
             
             const subject = document.getElementById('mailSubject').value.trim();
             const body = document.getElementById('mailBody').value.trim();
             
-            if (!subject || !body) {
-                showMessageDialog('Chyba', 'Vyplňte předmět a zprávu');
+            if (!subject) {
+                showMessageDialog('Chyba', 'Vyplňte předmět zprávy');
+                submitButton.disabled = false;
                 return;
             }
             
@@ -2586,6 +2606,7 @@
             
             // Show confirmation dialog
             showSendMailConfirm(recipients.length, attachmentData.length);
+            submitButton.disabled = false;
         }
 
         async function openReceivedMessagesWindow() {
@@ -2863,8 +2884,19 @@
 
             // Tažení myší
             document.addEventListener('mousedown', (e) => {
-                // Ignoruj pokud je klik na ikonu nebo okno
-                if (e.target.closest('.desktop-icon') || e.target.closest('.window')) {
+                // Ignoruj pokud je klik na ikonu, okno, nebo dialog
+                if (e.target.closest('.desktop-icon') || e.target.closest('.window') || e.target.closest('.dialog')) {
+                    return;
+                }
+                
+                // Ignoruj pokud některý dialog je aktivní (viditelný)
+                const activeDialog = document.querySelector('.dialog.active');
+                if (activeDialog) {
+                    return;
+                }
+                
+                // Ignoruj pokud klik není přímo na desktop
+                if (e.target !== desktop) {
                     return;
                 }
                 
