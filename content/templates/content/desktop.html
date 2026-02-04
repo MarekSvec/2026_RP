@@ -20,12 +20,25 @@
         }
 
         .desktop {
-            position: relative;
-            width: 100%;
-            height: 100vh;
+            position: fixed;
+            width: 500%;
+            height: 500%;
             background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse"><path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="rgba(100,100,150,0.2)"/><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            background-attachment: scroll;
+            user-select: none;
             overflow: hidden;
-            padding-bottom: 120px;
+            cursor: grab;
+            will-change: transform;
+            top: 0;
+            left: 0;
+            transform: translate(0px, 0px) scale(1);
+            transform-origin: 0 0;
+            transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .desktop.dragging {
+            cursor: grabbing;
+            transition: none;
         }
 
         .taskbar {
@@ -688,11 +701,12 @@
                 console.log('Desktop DROP event triggered');
                 console.log('currentlyDraggedForMail:', currentlyDraggedForMail);
                 
+                // Výpočet pozice na desktopu (bez zoom/offset)
+                const x = (e.clientX - desktopOffsetX) / desktopZoom;
+                const y = (e.clientY - desktopOffsetY) / desktopZoom;
+                
                 // Handle dragged attachment from message
                 if (currentlyDraggedForMail) {
-                    const x = e.clientX;
-                    const y = e.clientY;
-                    
                     console.log('Processing attachment drop:', currentlyDraggedForMail, 'at', x, y);
                     
                     if (currentMessageId) {
@@ -709,7 +723,7 @@
                 if (e.dataTransfer.files.length > 0) {
                     const files = Array.from(e.dataTransfer.files);
                     files.forEach(file => {
-                        uploadFileFromDrop(file, null, e.clientX, e.clientY);
+                        uploadFileFromDrop(file, null, x, y);
                     });
                 }
             });
@@ -804,8 +818,11 @@
             element.classList.add('dragging');
 
             function onMouseMove(e) {
-                element.style.left = (e.clientX - offsetX) + 'px';
-                element.style.top = (e.clientY - offsetY) + 'px';
+                // Přičti desktop offset a zoom aby se ikona pohybovala správně
+                const x = (e.clientX - offsetX - desktopOffsetX) / desktopZoom;
+                const y = (e.clientY - offsetY - desktopOffsetY) / desktopZoom;
+                element.style.left = x + 'px';
+                element.style.top = y + 'px';
             }
 
             function onMouseUp() {
@@ -1031,8 +1048,11 @@
             element.classList.add('dragging');
 
             function onMouseMove(e) {
-                element.style.left = (e.clientX - offsetX) + 'px';
-                element.style.top = (e.clientY - offsetY) + 'px';
+                // Přičti desktop offset a zoom aby se ikona pohybovala správně
+                const x = (e.clientX - offsetX - desktopOffsetX) / desktopZoom;
+                const y = (e.clientY - offsetY - desktopOffsetY) / desktopZoom;
+                element.style.left = x + 'px';
+                element.style.top = y + 'px';
             }
 
             function onMouseUp() {
@@ -2815,10 +2835,133 @@
 
         // Initialize unread badge on page load
         document.addEventListener('DOMContentLoaded', () => {
+            loadDesktopItems();
+            setupEventListeners();
             updateUnreadBadge();
             // Refresh badge every 30 seconds
             setInterval(updateUnreadBadge, 30000);
+            
+            // Initialize desktop pan and zoom
+            initializeDesktopPanZoom();
         });
+
+        // Desktop Pan and Zoom System
+        let desktopOffsetX = 0;
+        let desktopOffsetY = 0;
+        let desktopZoom = 1;
+        let isDraggingDesktop = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragStartOffsetX = 0;
+        let dragStartOffsetY = 0;
+        const minZoom = 0.3;
+        const maxZoom = 3;
+        const DESKTOP_GRID_SIZE = 5; // 5x5 desktopů
+
+        function initializeDesktopPanZoom() {
+            const desktop = document.getElementById('desktop');
+
+            // Tažení myší
+            document.addEventListener('mousedown', (e) => {
+                // Ignoruj pokud je klik na ikonu nebo okno
+                if (e.target.closest('.desktop-icon') || e.target.closest('.window')) {
+                    return;
+                }
+                
+                if (e.button !== 0) return; // Pouze levé tlačítko
+                
+                isDraggingDesktop = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                dragStartOffsetX = desktopOffsetX;
+                dragStartOffsetY = desktopOffsetY;
+                
+                desktop.classList.add('dragging');
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDraggingDesktop) return;
+
+                // Delta bez zoom - pohyb v screen koordinátách
+                const deltaX = e.clientX - dragStartX;
+                const deltaY = e.clientY - dragStartY;
+
+                let newOffsetX = dragStartOffsetX + deltaX;
+                let newOffsetY = dragStartOffsetY + deltaY;
+
+                // Aplikuj hranice - obdélník 5x5 desktopů
+                // Maximální vzdálenost kterou se můžeš pohnout: 4 viewporty × zoom
+                // Zoom ovlivňuje bariéry - když je zoom menší, vidíš víc obsahu
+                const maxPan = (DESKTOP_GRID_SIZE - 1) * window.innerWidth * desktopZoom;
+                const maxPanY = (DESKTOP_GRID_SIZE - 1) * window.innerHeight * desktopZoom;
+
+                // Omez offset mezi -maxPan a 0
+                desktopOffsetX = Math.max(-maxPan, Math.min(0, newOffsetX));
+                desktopOffsetY = Math.max(-maxPanY, Math.min(0, newOffsetY));
+
+                updateDesktopTransform();
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDraggingDesktop) {
+                    isDraggingDesktop = false;
+                    desktop.classList.remove('dragging');
+                }
+            });
+
+            // Zoom s kolečkem myši (bez Ctrl) s animací
+            document.addEventListener('wheel', (e) => {
+                // Pokud je kurzor nad desktopem
+                if (!e.target.closest('#desktop')) {
+                    return;
+                }
+                
+                e.preventDefault();
+                
+                const zoomSpeed = 0.1;
+                const oldZoom = desktopZoom;
+                
+                // Směr scrollu - nahoru = přiblížit, dolů = oddálit
+                if (e.deltaY < 0) {
+                    desktopZoom = Math.min(desktopZoom + zoomSpeed, maxZoom);
+                } else {
+                    desktopZoom = Math.max(desktopZoom - zoomSpeed, minZoom);
+                }
+                
+                // Pozice kurzoru na obrazovce
+                const cursorScreenX = e.clientX;
+                const cursorScreenY = e.clientY;
+                
+                // Pozice kurzoru v desktopových souřadnicích (před zoomem)
+                const cursorDesktopX = (cursorScreenX - desktopOffsetX) / oldZoom;
+                const cursorDesktopY = (cursorScreenY - desktopOffsetY) / oldZoom;
+                
+                // Nová pozice offsetu aby zůstal kurzor na stejném místě
+                let newOffsetX = cursorScreenX - cursorDesktopX * desktopZoom;
+                let newOffsetY = cursorScreenY - cursorDesktopY * desktopZoom;
+
+                // Aplikuj hranice - obdélník 5x5 desktopů
+                // Bariéry berou v úvahu nový zoom - když je zoom menší, vidíš víc
+                const maxPan = (DESKTOP_GRID_SIZE - 1) * window.innerWidth * desktopZoom;
+                const maxPanY = (DESKTOP_GRID_SIZE - 1) * window.innerHeight * desktopZoom;
+
+                // Omez offset mezi -maxPan a 0
+                newOffsetX = Math.max(-maxPan, Math.min(0, newOffsetX));
+                newOffsetY = Math.max(-maxPanY, Math.min(0, newOffsetY));
+                
+                // Pokud se offset změnil kvůli bariérám, přilepíme desktop na bariéru
+                // Kurzor se bude pohybovat, ale offset zůstane v mezích
+                desktopOffsetX = newOffsetX;
+                desktopOffsetY = newOffsetY;
+                
+                updateDesktopTransform();
+            }, { passive: false });
+        }
+
+        function updateDesktopTransform() {
+            const desktop = document.getElementById('desktop');
+            desktop.style.transform = `translate(${desktopOffsetX}px, ${desktopOffsetY}px) scale(${desktopZoom})`;
+        }
 
         // Attachment Selector Functions
         async function openAttachmentSelector() {
