@@ -2950,7 +2950,10 @@
                 
                 e.preventDefault();
                 
-                const zoomSpeed = 0.1;
+                // Zjisti zda je to touchpad nebo myší - touchpady mají malé deltaY hodnoty
+                // Touchpady generují kleiné hodnoty (1-2), myš generuje větší (50-100+)
+                const isTouchpad = Math.abs(e.deltaY) < 5;
+                const zoomSpeed = isTouchpad ? 0.01 : 0.1; // 10x pomalejší pro touchpad
                 const oldZoom = desktopZoom;
                 
                 // Směr scrollu - nahoru = přiblížit, dolů = oddálit
